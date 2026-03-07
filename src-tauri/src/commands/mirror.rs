@@ -120,18 +120,25 @@ const MIRRORS: &[(&str, &str)] = &[
     ("huawei", "https://mirrors.huaweicloud.com"),
 ];
 
-// Test a single mirror and return latency info.
+// Test a single mirror and return latency info using HEAD request.
 async fn test_single_mirror(
     client: &reqwest::Client,
     name: &str,
     url: &str,
 ) -> MirrorResult {
     let start = Instant::now();
-    let result = client.get(url).send().await;
+    let result = client.head(url).send().await;
     let elapsed = start.elapsed().as_millis() as u64;
 
     match result {
         Ok(resp) if resp.status().is_success() || resp.status().is_redirection() => MirrorResult {
+            name: name.to_string(),
+            url: url.to_string(),
+            latency_ms: Some(elapsed),
+            reachable: true,
+        },
+        // Some mirrors return 405 for HEAD but are still reachable
+        Ok(resp) if resp.status().as_u16() == 405 => MirrorResult {
             name: name.to_string(),
             url: url.to_string(),
             latency_ms: Some(elapsed),
@@ -149,7 +156,8 @@ async fn test_single_mirror(
 #[tauri::command]
 pub async fn test_mirrors() -> Result<Vec<MirrorResult>, String> {
     let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(10))
+        .timeout(std::time::Duration::from_secs(5))
+        .redirect(reqwest::redirect::Policy::limited(3))
         .build()
         .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
 
@@ -185,6 +193,7 @@ pub async fn test_mirrors() -> Result<Vec<MirrorResult>, String> {
 }
 
 // Test latency for a single URL provided by the frontend (https only).
+// Uses HEAD request with short timeout to measure connectivity, not page load.
 #[tauri::command]
 pub async fn test_mirror_latency(url: String) -> Result<u64, String> {
     if !url.starts_with("https://") {
@@ -192,10 +201,11 @@ pub async fn test_mirror_latency(url: String) -> Result<u64, String> {
     }
     let start = Instant::now();
     let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(10))
+        .timeout(std::time::Duration::from_secs(5))
+        .redirect(reqwest::redirect::Policy::limited(3))
         .build()
         .map_err(|e| e.to_string())?;
-    client.get(&url).send().await.map_err(|e| e.to_string())?;
+    client.head(&url).send().await.map_err(|e| e.to_string())?;
     Ok(start.elapsed().as_millis() as u64)
 }
 
