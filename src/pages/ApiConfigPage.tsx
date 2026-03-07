@@ -296,7 +296,10 @@ export default function ApiConfigPage({ mode = "wizard", onDone }: ApiConfigPage
                 type="password"
                 placeholder={t("apiConfig.apiKeyPlaceholder")}
                 value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
+                onChange={(e) => {
+                  setApiKey(e.target.value);
+                  if (apiTestStatus !== "idle") setApiTestStatus("idle");
+                }}
               />
             </div>
 
@@ -309,7 +312,10 @@ export default function ApiConfigPage({ mode = "wizard", onDone }: ApiConfigPage
                 type="text"
                 placeholder={t("apiConfig.baseUrlPlaceholder")}
                 value={apiBaseUrl}
-                onChange={(e) => setApiBaseUrl(e.target.value)}
+                onChange={(e) => {
+                  setApiBaseUrl(e.target.value);
+                  if (apiTestStatus !== "idle") setApiTestStatus("idle");
+                }}
               />
             </div>
 
@@ -322,7 +328,10 @@ export default function ApiConfigPage({ mode = "wizard", onDone }: ApiConfigPage
                 type="text"
                 placeholder={selectedProvider.defaultModel || t("apiConfig.modelPlaceholder")}
                 value={apiModel}
-                onChange={(e) => setApiModel(e.target.value)}
+                onChange={(e) => {
+                  setApiModel(e.target.value);
+                  if (apiTestStatus !== "idle") setApiTestStatus("idle");
+                }}
               />
               <span className="apiconfig-field-hint">{t("apiConfig.modelHint")}</span>
             </div>

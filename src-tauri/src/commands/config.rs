@@ -332,6 +332,9 @@ pub async fn configure_api(
     base_url: String,
     model: String,
 ) -> Result<(), String> {
+    // Refresh PATH so we can find openclaw after a fresh install
+    super::path_env::refresh_system_path();
+
     // Build the openclaw onboard command with provider-specific flags
     let mut args: Vec<String> = vec![
         "onboard".to_string(),
@@ -431,12 +434,23 @@ pub async fn configure_api(
             format!("{}/{}", provider, model)
         };
 
-        let _ = cmd("openclaw")
+        let model_result = cmd("openclaw")
             .args(["config", "set", "agents.defaults.model.primary", &model_id])
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .output()
             .await;
+
+        if let Err(e) = &model_result {
+            eprintln!("Warning: failed to set default model: {}", e);
+        } else if let Ok(o) = &model_result {
+            if !o.status.success() {
+                eprintln!(
+                    "Warning: openclaw config set failed: {}",
+                    String::from_utf8_lossy(&o.stderr)
+                );
+            }
+        }
     }
 
     Ok(())
@@ -453,6 +467,11 @@ async fn configure_api_direct(
 ) -> Result<(), String> {
     let config_dir = openclaw_config_dir()?;
     let config_path = config_dir.join("openclaw.json");
+
+    // Ensure the config directory exists (first-time install may not have created it yet)
+    tokio::fs::create_dir_all(&config_dir)
+        .await
+        .map_err(|e| format!("Failed to create config directory {}: {}", config_dir.display(), e))?;
 
     // Read existing config
     let content = tokio::fs::read_to_string(&config_path)
