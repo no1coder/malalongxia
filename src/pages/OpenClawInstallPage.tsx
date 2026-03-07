@@ -194,6 +194,20 @@ export default function OpenClawInstallPage() {
         <p>{t("openclawInstall.description")}</p>
       </div>
 
+      {/* Sticky top notices */}
+      <div className="ocinstall-notices">
+        {osType === "windows" && (
+          <div className="ocinstall-notice ocinstall-notice-warn">
+            <AlertTriangle size={16} />
+            <span>{t("openclawInstall.winConsoleWarning")}</span>
+          </div>
+        )}
+        <div className="ocinstall-notice ocinstall-notice-info">
+          <Info size={16} />
+          <span>{t("openclawInstall.strategy")}</span>
+        </div>
+      </div>
+
       <div className="ocinstall-content">
         {/* npm not available warning */}
         {npmReady === false && (
@@ -205,24 +219,6 @@ export default function OpenClawInstallPage() {
             </div>
           </div>
         )}
-
-        {/* Windows console window warning */}
-        {osType === "windows" && (
-          <div className="ocinstall-strategy">
-            <AlertTriangle />
-            <span className="ocinstall-strategy-text">
-              {t("openclawInstall.winConsoleWarning")}
-            </span>
-          </div>
-        )}
-
-        {/* Mirror strategy explanation */}
-        <div className="ocinstall-strategy">
-          <Info />
-          <span className="ocinstall-strategy-text">
-            {t("openclawInstall.strategy")}
-          </span>
-        </div>
 
         {/* Mirror list with speed test */}
         <div className="ocinstall-mirrors">

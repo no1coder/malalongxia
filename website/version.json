@@ -1,11 +1,11 @@
 {
-  "version": "0.1.5",
+  "version": "0.2.2",
   "download_url": "https://malalongxia.com",
-  "release_notes": "首个发布版本",
+  "release_notes": "18项安装稳定性优化：修复npm全局配置污染、Windows PATH覆盖、下载重试、错误分类提示、企业CA证书支持、Windows免管理员Node.js安装等",
   "downloads": {
-    "macOS_arm64": "./downloads/OpenClawX_0.1.5_aarch64.dmg",
-    "macOS_x64": "./downloads/OpenClawX_0.1.5_x64.dmg",
-    "windows_x64": "./downloads/OpenClawX_0.1.5_x64-setup.exe",
-    "linux_amd64": "./downloads/OpenClawX_0.1.5_amd64.AppImage"
+    "macOS_arm64": "./downloads/OpenClawX_0.2.2_aarch64.dmg",
+    "macOS_x64": "./downloads/OpenClawX_0.2.2_x64.dmg",
+    "windows_x64": "./downloads/OpenClawX_0.2.2_x64-setup.exe",
+    "linux_amd64": "./downloads/OpenClawX_0.2.2_amd64.AppImage"
   }
 }

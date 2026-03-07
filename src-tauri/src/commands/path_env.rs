@@ -82,6 +82,11 @@ pub fn expanded_path() -> String {
         if !local_data.is_empty() {
             extra.push(PathBuf::from(&local_data).join("Programs").join("MinGit").join("cmd"));
         }
+
+        // Portable Node.js (installed by this app)
+        if !local_data.is_empty() {
+            extra.push(PathBuf::from(&local_data).join("Programs").join("nodejs"));
+        }
     }
 
     // Only keep paths that actually exist
@@ -104,6 +109,7 @@ pub fn expanded_path() -> String {
 /// installed programs (e.g. node/npm) become discoverable.
 #[cfg(windows)]
 pub fn refresh_system_path() {
+    use std::collections::HashSet;
     use std::process::Command as StdCommand;
 
     // Read Machine PATH from registry
@@ -122,10 +128,30 @@ pub fn refresh_system_path() {
         .and_then(|o| parse_reg_value(&String::from_utf8_lossy(&o.stdout)))
         .unwrap_or_default();
 
-    if !machine_path.is_empty() || !user_path.is_empty() {
-        let combined = format!("{};{}", machine_path, user_path);
-        std::env::set_var("PATH", &combined);
+    if machine_path.is_empty() && user_path.is_empty() {
+        return;
     }
+
+    // Merge registry paths with current process PATH, deduplicating.
+    // Registry entries come first (freshest system state), then any
+    // process-only entries (e.g. MinGit added at runtime) are appended.
+    let current_path = std::env::var("PATH").unwrap_or_default();
+    let mut seen = HashSet::new();
+    let mut merged: Vec<&str> = Vec::new();
+
+    for source in [machine_path.as_str(), user_path.as_str(), current_path.as_str()] {
+        for entry in source.split(';') {
+            let trimmed = entry.trim();
+            if !trimmed.is_empty() {
+                let lower = trimmed.to_lowercase();
+                if seen.insert(lower) {
+                    merged.push(trimmed);
+                }
+            }
+        }
+    }
+
+    std::env::set_var("PATH", merged.join(";"));
 }
 
 /// Parse a registry value from `reg query` output.

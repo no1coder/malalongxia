@@ -982,23 +982,6 @@ pub async fn reset_installation() -> Result<(), String> {
             .map_err(|e| format!("Failed to remove config directory: {}", e))?;
     }
 
-    // Step 3: Reset npm registry to default
-    let child = cmd("npm")
-        .args(["config", "delete", "registry"])
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .output()
-        .await
-        .map_err(|e| format!("Failed to reset npm registry: {}", e))?;
-
-    if !child.status.success() {
-        let stderr = String::from_utf8_lossy(&child.stderr);
-        // Non-fatal: registry may not have been set
-        if !stderr.is_empty() {
-            eprintln!("Warning resetting npm registry: {}", stderr);
-        }
-    }
-
     Ok(())
 }
 

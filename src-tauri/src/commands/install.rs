@@ -145,12 +145,68 @@ fn emit_progress(window: &Window, channel: &str, percent: u32, message: &str) {
 
 // Emit a log line to the frontend with a channel prefix.
 fn emit_log(window: &Window, channel: &str, line: &str) {
-    let _ = window.emit(&format!("{}-log", channel), line.to_string());
+    // Strip ANSI escape codes (colors, cursor movement) from log lines
+    let clean = strip_ansi_codes(line);
+    let _ = window.emit(&format!("{}-log", channel), clean);
+}
+
+// Remove ANSI escape sequences from a string (e.g. \x1b[31m, \x1b[0m).
+fn strip_ansi_codes(s: &str) -> String {
+    let mut result = String::with_capacity(s.len());
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '\x1b' {
+            // Skip ESC + '[' + params + final byte
+            if chars.peek() == Some(&'[') {
+                chars.next(); // consume '['
+                while let Some(&next) = chars.peek() {
+                    chars.next();
+                    if next.is_ascii_alphabetic() || next == 'm' {
+                        break;
+                    }
+                }
+            }
+        } else {
+            result.push(c);
+        }
+    }
+    result
 }
 
 // Download a file with progress reporting via Tauri events.
-// Returns the path to the downloaded file.
+// Automatically retries up to 3 times on transient failures.
 async fn download_with_progress(
+    window: &Window,
+    channel: &str,
+    url: &str,
+    dest: &str,
+    progress_start: u32,
+    progress_end: u32,
+) -> Result<(), String> {
+    let max_retries = 3;
+    let mut last_error = String::new();
+
+    for attempt in 1..=max_retries {
+        if attempt > 1 {
+            emit_log(window, channel, &format!("Download retry {}/{}...", attempt, max_retries));
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        }
+
+        match download_once(window, channel, url, dest, progress_start, progress_end).await {
+            Ok(()) => return Ok(()),
+            Err(e) => {
+                emit_log(window, channel, &format!("Download attempt {} failed: {}", attempt, e));
+                last_error = e;
+                let _ = tokio::fs::remove_file(dest).await;
+            }
+        }
+    }
+
+    Err(format!("Download failed after {} attempts: {}", max_retries, last_error))
+}
+
+// Single download attempt with progress reporting.
+async fn download_once(
     window: &Window,
     channel: &str,
     url: &str,
@@ -199,7 +255,6 @@ async fn download_with_progress(
             let fraction = downloaded as f64 / total_size as f64;
             let percent =
                 progress_start + ((progress_end - progress_start) as f64 * fraction) as u32;
-            // Throttle: only emit when percent actually changes
             if percent > last_emitted_percent {
                 let downloaded_mb = downloaded as f64 / 1_048_576.0;
                 let total_mb = total_size as f64 / 1_048_576.0;
@@ -275,6 +330,27 @@ async fn stream_child_output(
 
 // Install portable Git (MinGit) on Windows, or git via package manager on other platforms.
 // MinGit is the official lightweight Git for Windows distribution (~30MB).
+// Detect macOS codename from version number for Homebrew bottle matching.
+#[cfg(target_os = "macos")]
+fn detect_macos_codename() -> &'static str {
+    let version = sysinfo::System::os_version().unwrap_or_default();
+    let major: u32 = version.split('.').next()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0);
+    match major {
+        15 => "sequoia",
+        14 => "sonoma",
+        13 => "ventura",
+        12 => "monterey",
+        _ => "sonoma", // fallback to sonoma
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn detect_macos_codename() -> &'static str {
+    "sonoma"
+}
+
 async fn install_portable_git(window: &Window, channel: &str) -> Result<(), String> {
     let os = std::env::consts::OS;
 
@@ -400,11 +476,14 @@ async fn install_portable_git(window: &Window, channel: &str) -> Result<(), Stri
             let arch = std::env::consts::ARCH;
             let git_version = "2.53.0";
             // Homebrew git bottles hosted on our own site (~22MB each)
+            // Detect macOS version for correct Homebrew bottle variant
+            let macos_codename = detect_macos_codename();
             let filename = if arch == "aarch64" {
-                format!("git-{}-arm64_sonoma.bottle.tar.gz", git_version)
+                format!("git-{}-arm64_{}.bottle.tar.gz", git_version, macos_codename)
             } else {
-                format!("git-{}-sonoma.bottle.tar.gz", git_version)
+                format!("git-{}-{}.bottle.tar.gz", git_version, macos_codename)
             };
+            emit_log(window, channel, &format!("Detected macOS variant: {}", macos_codename));
             let url = format!("https://malalongxia.com/downloads/{}", filename);
 
             let tmp_tarball = std::env::temp_dir().join(&filename);
@@ -442,6 +521,15 @@ async fn install_portable_git(window: &Window, channel: &str) -> Result<(), Stri
 
             stream_child_output(window, channel, child).await?;
 
+            // Clear macOS Gatekeeper quarantine attribute so binaries can execute
+            let _ = Command::new("xattr")
+                .args(["-cr", &git_dir.to_string_lossy().to_string()])
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .output()
+                .await;
+            emit_log(window, channel, "Cleared quarantine attributes.");
+
             // Add git bin to PATH in shell profile
             let git_bin = git_dir.join("bin");
             let path_export = format!(
@@ -450,7 +538,7 @@ async fn install_portable_git(window: &Window, channel: &str) -> Result<(), Stri
             );
 
             let home = dirs::home_dir().ok_or("Cannot determine home directory")?;
-            let profile_candidates = [".zshrc", ".bashrc", ".profile"];
+            let profile_candidates = [".zshrc", ".zprofile", ".bashrc", ".bash_profile", ".profile"];
             for profile_name in &profile_candidates {
                 let profile_path = home.join(profile_name);
                 if profile_path.exists() {
@@ -535,7 +623,7 @@ fn build_node_download_url(mirror_base: &str) -> String {
         }
         "windows" => {
             let arch_str = if arch == "aarch64" { "arm64" } else { "x64" };
-            format!("node-{}-{}.msi", NODE_VERSION, arch_str)
+            format!("node-{}-win-{}.zip", NODE_VERSION, arch_str)
         }
         _ => format!("node-{}-linux-x64.tar.xz", NODE_VERSION),
     };
@@ -581,7 +669,7 @@ pub async fn install_node(mirror: String, method: String, window: Window) -> Res
             .map_err(|e| format!("Failed to start nvm install: {}", e))?;
 
         stream_child_output(&window, ch, child).await?;
-        emit_progress(&window, ch, 50, "nvm installed, installing Node.js LTS...");
+        emit_progress(&window, ch, 50, "nvm installed, installing Node.js v22...");
 
         // Source nvm and install node LTS using the selected mirror
         let nvm_dir = dirs::home_dir()
@@ -592,7 +680,7 @@ pub async fn install_node(mirror: String, method: String, window: Window) -> Res
         // Use the mirror URL for NVM_NODEJS_ORG_MIRROR (passed as env var, not shell string)
         let mirror_base = mirror.trim_end_matches('/');
         let install_cmd = format!(
-            "source {} && nvm install --lts && nvm use --lts",
+            "source {} && nvm install 22 && nvm use 22",
             nvm_script.display(),
         );
 
@@ -668,7 +756,7 @@ pub async fn install_node(mirror: String, method: String, window: Window) -> Res
 
                 let home = dirs::home_dir().ok_or("Cannot determine home directory")?;
                 // Append to appropriate shell profile
-                let profile_candidates = [".zshrc", ".bashrc", ".profile"];
+                let profile_candidates = [".zshrc", ".zprofile", ".bashrc", ".bash_profile", ".profile"];
                 for profile_name in &profile_candidates {
                     let profile_path = home.join(profile_name);
                     if profile_path.exists() {
@@ -704,31 +792,103 @@ pub async fn install_node(mirror: String, method: String, window: Window) -> Res
                 emit_progress(&window, ch, 100, "Node.js installed successfully!");
             }
             "windows" => {
-                let tmp_path = std::env::temp_dir().join("node-installer.msi");
+                let tmp_path = std::env::temp_dir().join("node-installer.zip");
                 let tmp_str = tmp_path.to_string_lossy().to_string();
 
                 // Download with progress (5% - 70%)
                 download_with_progress(&window, ch, &download_url, &tmp_str, 5, 70).await?;
 
-                emit_progress(&window, ch, 75, "Running Node.js installer...");
-                emit_log(&window, ch, "Running MSI installer (may require admin privileges)...");
+                emit_progress(&window, ch, 75, "Extracting Node.js...");
+                emit_log(&window, ch, "Extracting portable Node.js (no admin required)...");
 
-                let child = cmd("msiexec")
-                    .args(["/i", &tmp_str, "/passive", "/norestart"])
-                    .stdout(std::process::Stdio::piped())
-                    .stderr(std::process::Stdio::piped())
-                    .spawn()
-                    .map_err(|e| format!("Failed to run Node.js installer: {}", e))?;
+                // Extract to %LOCALAPPDATA%\Programs\nodejs
+                let local_app_data = std::env::var("LOCALAPPDATA")
+                    .unwrap_or_else(|_| {
+                        dirs::home_dir()
+                            .unwrap_or_default()
+                            .join("AppData")
+                            .join("Local")
+                            .to_string_lossy()
+                            .to_string()
+                    });
+                let node_dir = std::path::PathBuf::from(&local_app_data)
+                    .join("Programs")
+                    .join("nodejs");
 
-                if let Err(e) = stream_child_output(&window, ch, child).await {
-                    // MSI failures are often permission-related on Windows
-                    let _ = tokio::fs::remove_file(&tmp_path).await;
-                    return Err(format!(
-                        "Node.js MSI installer failed: {}. Try running OpenClawX as Administrator.",
-                        e
-                    ));
+                // Clean up existing directory if present
+                if node_dir.exists() {
+                    let _ = Command::new("cmd")
+                        .args(["/C", "rmdir", "/s", "/q", &node_dir.to_string_lossy()])
+                        .output()
+                        .await;
                 }
 
+                let _ = tokio::fs::create_dir_all(&node_dir).await;
+
+                // Extract zip: try tar.exe first, then PowerShell
+                let tar_result = Command::new("tar")
+                    .args(["-xf", &tmp_str, "-C", &node_dir.to_string_lossy(), "--strip-components=1"])
+                    .stdout(std::process::Stdio::piped())
+                    .stderr(std::process::Stdio::piped())
+                    .spawn();
+
+                match tar_result {
+                    Ok(child) => {
+                        stream_child_output(&window, ch, child).await?;
+                    }
+                    Err(_) => {
+                        // Fallback: PowerShell Expand-Archive + move contents
+                        emit_log(&window, ch, "tar not available, trying PowerShell...");
+                        let tmp_extract = std::env::temp_dir().join("node-extract");
+                        let extract_cmd = format!(
+                            "Remove-Item -Recurse -Force '{}' -ErrorAction SilentlyContinue; \
+                             Expand-Archive -Force -Path '{}' -DestinationPath '{}'; \
+                             $sub = Get-ChildItem '{}' -Directory | Select-Object -First 1; \
+                             if ($sub) {{ Get-ChildItem $sub.FullName | Move-Item -Destination '{}' -Force }}; \
+                             Remove-Item -Recurse -Force '{}' -ErrorAction SilentlyContinue",
+                            tmp_extract.display(), tmp_str, tmp_extract.display(),
+                            tmp_extract.display(), node_dir.display(), tmp_extract.display()
+                        );
+                        let ps_paths = [
+                            "powershell.exe".to_string(),
+                            format!("{}\\WindowsPowerShell\\v1.0\\powershell.exe",
+                                std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".to_string())),
+                        ];
+                        let mut ps_child = None;
+                        for ps in &ps_paths {
+                            if let Ok(c) = Command::new(ps)
+                                .args(["-NoProfile", "-Command", &extract_cmd])
+                                .stdout(std::process::Stdio::piped())
+                                .stderr(std::process::Stdio::piped())
+                                .spawn()
+                            {
+                                ps_child = Some(c);
+                                break;
+                            }
+                        }
+                        let child = ps_child.ok_or_else(|| {
+                            "Failed to extract Node.js: neither tar nor PowerShell found".to_string()
+                        })?;
+                        stream_child_output(&window, ch, child).await?;
+                    }
+                }
+
+                // Add to current process PATH
+                let current_path = std::env::var("PATH").unwrap_or_default();
+                std::env::set_var("PATH", format!("{};{}", node_dir.display(), current_path));
+
+                // Also add npm global directory
+                let appdata = std::env::var("APPDATA").unwrap_or_default();
+                if !appdata.is_empty() {
+                    let npm_global = std::path::PathBuf::from(&appdata).join("npm");
+                    let _ = tokio::fs::create_dir_all(&npm_global).await;
+                    let current_path = std::env::var("PATH").unwrap_or_default();
+                    if !current_path.contains(&npm_global.to_string_lossy().to_string()) {
+                        std::env::set_var("PATH", format!("{};{}", npm_global.display(), current_path));
+                    }
+                }
+
+                // Cleanup temp file
                 let _ = tokio::fs::remove_file(&tmp_path).await;
 
                 emit_progress(&window, ch, 90, "Verifying Node.js...");
@@ -740,6 +900,26 @@ pub async fn install_node(mirror: String, method: String, window: Window) -> Res
     }
 
     Ok(())
+}
+
+// Classify npm install errors and provide actionable hints.
+fn classify_install_error(err: &str) -> &'static str {
+    let lower = err.to_lowercase();
+    if lower.contains("eacces") || lower.contains("eperm") || lower.contains("permission denied") {
+        "Permission error. Try running the app as Administrator (Windows) or check file permissions."
+    } else if lower.contains("enospc") {
+        "Disk full. Free up disk space and try again."
+    } else if lower.contains("etarget") || lower.contains("enoent") {
+        "Package not found. The npm registry may be temporarily unavailable."
+    } else if lower.contains("network") || lower.contains("etimedout") || lower.contains("econnrefused") || lower.contains("econnreset") {
+        "Network error. Check your internet connection or try a different mirror."
+    } else if lower.contains("node-gyp") || lower.contains("cmake") || lower.contains("msbuild") {
+        "Native module compilation failed. This is usually not critical for OpenClaw."
+    } else if lower.contains("sharp") || lower.contains("libvips") {
+        "Image processing module error. This is usually not critical."
+    } else {
+        ""
+    }
 }
 
 #[tauri::command]
@@ -787,30 +967,18 @@ pub async fn install_openclaw(mirror: String, window: Window) -> Result<InstallR
         }
     }
 
-    // Step 1: Configure npm registry
-    emit_progress(&window, ch, 0, "Configuring npm registry...");
-    emit_log(&window, ch, &format!("Setting npm registry to {}", registry));
+    // Step 1: Will pass --registry flag directly to npm install (avoids modifying global config)
+    emit_progress(&window, ch, 10, "Preparing installation...");
+    emit_log(&window, ch, &format!("Using npm registry: {}", registry));
 
-    let child = cmd("npm")
-        .args(["config", "set", "registry", registry])
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("Failed to configure npm registry: {}", e))?;
-
-    stream_child_output(&window, ch, child).await?;
-    emit_progress(&window, ch, 20, "npm registry configured.");
-
-    // Rewrite GitHub SSH → HTTPS so users without SSH keys aren't blocked.
-    // Then check if GitHub is reachable; if not, route through a mirror.
-    let _ = cmd("git")
-        .args(["config", "--global", "url.https://github.com/.insteadOf", "ssh://git@github.com/"])
-        .output()
-        .await;
-    let _ = cmd("git")
-        .args(["config", "--global", "url.https://github.com/.insteadOf", "git@github.com:"])
-        .output()
-        .await;
+    // Build git config env vars to avoid modifying user's global gitconfig.
+    // GIT_CONFIG_COUNT + GIT_CONFIG_KEY_N + GIT_CONFIG_VALUE_N let us set
+    // temporary config for child processes only.
+    let mut git_config_entries: Vec<(String, String)> = vec![
+        // Rewrite SSH → HTTPS so users without SSH keys aren't blocked
+        ("url.https://github.com/.insteadOf".to_string(), "ssh://git@github.com/".to_string()),
+        ("url.https://github.com/.insteadOf".to_string(), "git@github.com:".to_string()),
+    ];
 
     // Test direct GitHub connectivity (many Chinese users can't reach it)
     let github_ok = reqwest::Client::new()
@@ -823,7 +991,6 @@ pub async fn install_openclaw(mirror: String, window: Window) -> Result<InstallR
 
     if !github_ok {
         emit_log(&window, ch, "GitHub unreachable, configuring mirror proxy...");
-        // Try known GitHub mirror proxies in order
         let mirrors = [
             "https://ghfast.top/https://github.com/",
             "https://mirror.ghproxy.com/https://github.com/",
@@ -838,32 +1005,45 @@ pub async fn install_openclaw(mirror: String, window: Window) -> Result<InstallR
                 .is_ok();
             if ok {
                 emit_log(&window, ch, &format!("Using GitHub mirror: {}", mirror_url));
-                let _ = cmd("git")
-                    .args(["config", "--global", &format!("url.{}.insteadOf", mirror_url), "https://github.com/"])
-                    .output()
-                    .await;
+                git_config_entries.push((
+                    format!("url.{}.insteadOf", mirror_url),
+                    "https://github.com/".to_string(),
+                ));
                 break;
             }
         }
     }
 
     // Step 2: Install openclaw globally with retry mechanism
-    emit_progress(&window, ch, 30, "Installing openclaw...");
+    emit_progress(&window, ch, 20, "Installing openclaw...");
 
     let max_retries = 3;
     let mut last_error = String::new();
     for attempt in 1..=max_retries {
         if attempt > 1 {
             emit_log(&window, ch, &format!("Retry attempt {}/{}...", attempt, max_retries));
-            emit_progress(&window, ch, 30, &format!("Retrying installation ({}/{})...", attempt, max_retries));
+            emit_progress(&window, ch, 20, &format!("Retrying installation ({}/{})...", attempt, max_retries));
             tokio::time::sleep(std::time::Duration::from_secs(3)).await;
         }
 
         emit_log(&window, ch, "Running: npm install -g openclaw@latest");
 
-        let child = cmd("npm")
-            .args(["install", "-g", "openclaw@latest"])
+        let mut npm_cmd = cmd("npm");
+        npm_cmd
+            .args(["install", "-g", "openclaw@latest", "--registry", registry])
             .env("SHARP_IGNORE_GLOBAL_LIBVIPS", "1")
+            // Skip node-llama-cpp native compilation — most users use API mode,
+            // not local models. This avoids cmake/xpm/Vulkan build failures.
+            .env("NODE_LLAMA_CPP_SKIP_DOWNLOAD", "true");
+
+        // Pass git config via environment variables (not global gitconfig)
+        npm_cmd.env("GIT_CONFIG_COUNT", git_config_entries.len().to_string());
+        for (i, (key, value)) in git_config_entries.iter().enumerate() {
+            npm_cmd.env(format!("GIT_CONFIG_KEY_{}", i), key);
+            npm_cmd.env(format!("GIT_CONFIG_VALUE_{}", i), value);
+        }
+
+        let child = npm_cmd
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .spawn()
@@ -875,33 +1055,70 @@ pub async fn install_openclaw(mirror: String, window: Window) -> Result<InstallR
                 break;
             }
             Err(e) => {
+                let error_hint = classify_install_error(&e);
                 emit_log(&window, ch, &format!("Install attempt {} failed: {}", attempt, e));
+                if !error_hint.is_empty() {
+                    emit_log(&window, ch, &format!("Hint: {}", error_hint));
+                }
                 last_error = e;
-                // Clear npm cache before retry to avoid corrupted downloads
+                // Clean up before retry
                 if attempt < max_retries {
-                    emit_log(&window, ch, "Cleaning npm cache before retry...");
+                    // Remove leftover openclaw dir to avoid EPERM file lock issues on Windows
+                    emit_log(&window, ch, "Cleaning up before retry...");
+                    let npm_prefix = cmd("npm")
+                        .args(["config", "get", "prefix"])
+                        .output()
+                        .await
+                        .ok()
+                        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+                        .unwrap_or_default();
+                    if !npm_prefix.is_empty() {
+                        let leftover = std::path::PathBuf::from(&npm_prefix)
+                            .join("node_modules")
+                            .join("openclaw");
+                        if leftover.exists() {
+                            emit_log(&window, ch, &format!("Removing leftover {}", leftover.display()));
+                            // On Windows, use rmdir /s /q for better handling of locked files
+                            if cfg!(windows) {
+                                let _ = Command::new("cmd")
+                                    .args(["/C", "rmdir", "/s", "/q", &leftover.to_string_lossy()])
+                                    .output()
+                                    .await;
+                            } else {
+                                let _ = tokio::fs::remove_dir_all(&leftover).await;
+                            }
+                        }
+                    }
                     let _ = cmd("npm").args(["cache", "clean", "--force"]).output().await;
                 }
             }
         }
     }
 
-    // Clean up temporary git config (remove GitHub mirror rewrite)
-    let _ = cmd("git")
-        .args(["config", "--global", "--unset-all", "url.https://github.com/.insteadOf"])
-        .output()
-        .await;
-    // Remove mirror proxy insteadOf entries (pattern varies by which mirror was used)
-    for prefix in ["https://ghfast.top/", "https://mirror.ghproxy.com/", "https://gh-proxy.com/"] {
-        let key = format!("url.{}https://github.com/.insteadOf", prefix);
-        let _ = cmd("git")
-            .args(["config", "--global", "--unset-all", &key])
+    if !last_error.is_empty() {
+        // npm may report errors from optional/postinstall scripts even though
+        // the core package was installed successfully. Check if openclaw is usable.
+        emit_log(&window, ch, "Checking if openclaw is usable despite npm errors...");
+        refresh_system_path();
+        let oc_check = cmd("openclaw")
+            .arg("--version")
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
             .output()
             .await;
-    }
-
-    if !last_error.is_empty() {
-        return Err(format!("Failed to install openclaw after {} attempts: {}", max_retries, last_error));
+        match oc_check {
+            Ok(o) if o.status.success() => {
+                let v = String::from_utf8_lossy(&o.stdout).trim().to_string();
+                emit_log(&window, ch, &format!("openclaw {} is usable despite npm warnings.", v));
+                // Continue — installation is partially successful but functional
+            }
+            _ => {
+                return Err(format!(
+                    "Failed to install openclaw after {} attempts: {}",
+                    max_retries, last_error
+                ));
+            }
+        }
     }
 
     emit_progress(&window, ch, 100, "OpenClaw installed successfully!");
@@ -955,7 +1172,7 @@ mod tests {
         match os {
             "macos" => assert!(url.ends_with(".tar.gz")),
             "linux" => assert!(url.ends_with(".tar.xz")),
-            "windows" => assert!(url.ends_with(".msi")),
+            "windows" => assert!(url.ends_with(".zip")),
             _ => assert!(url.ends_with(".tar.xz")),
         }
     }
@@ -1005,7 +1222,7 @@ mod tests {
         let url = build_node_download_url("https://mirror.example.com");
         let os = std::env::consts::OS;
         if os == "windows" {
-            assert!(url.ends_with(".msi"), "Windows should use .msi: {}", url);
+            assert!(url.ends_with(".zip"), "Windows should use .zip: {}", url);
             assert!(!url.contains("darwin"), "Windows URL should not contain 'darwin'");
             assert!(!url.contains("linux"), "Windows URL should not contain 'linux'");
         }

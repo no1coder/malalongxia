@@ -33,6 +33,44 @@
   line-height: var(--line-height-normal);
 }
 
+/* ----- Sticky Top Notices ----- */
+.ocinstall-notices {
+  max-width: 600px;
+  width: 100%;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  flex-shrink: 0;
+  margin-bottom: var(--spacing-md);
+}
+
+.ocinstall-notice {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: 8px var(--spacing-md);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-xs);
+  line-height: var(--line-height-normal);
+}
+
+.ocinstall-notice svg {
+  flex-shrink: 0;
+}
+
+.ocinstall-notice-warn {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: var(--color-error);
+}
+
+.ocinstall-notice-info {
+  background: rgba(96, 165, 250, 0.08);
+  border: 1px solid rgba(96, 165, 250, 0.2);
+  color: var(--color-info);
+}
+
 .ocinstall-content {
   flex: 1;
   max-width: 600px;
