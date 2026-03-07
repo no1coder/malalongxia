@@ -322,17 +322,31 @@ async fn install_portable_git(window: &Window, channel: &str) -> Result<(), Stri
             emit_log(window, channel, &format!("Extracting MinGit to {} ...", git_dir.display()));
 
             // Use PowerShell to extract zip (built-in on all modern Windows)
+            // Try powershell.exe via system path first, fallback to full path
             let extract_cmd = format!(
                 "Expand-Archive -Force -Path '{}' -DestinationPath '{}'",
                 tmp_str,
                 git_dir.display()
             );
-            let child = Command::new("powershell")
-                .args(["-NoProfile", "-Command", &extract_cmd])
-                .stdout(std::process::Stdio::piped())
-                .stderr(std::process::Stdio::piped())
-                .spawn()
-                .map_err(|e| format!("Failed to extract MinGit: {}", e))?;
+            let ps_candidates = [
+                "powershell.exe".to_string(),
+                format!("{}\\WindowsPowerShell\\v1.0\\powershell.exe",
+                    std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".to_string())),
+            ];
+            let mut spawn_result = None;
+            for ps in &ps_candidates {
+                match Command::new(ps)
+                    .args(["-NoProfile", "-Command", &extract_cmd])
+                    .stdout(std::process::Stdio::piped())
+                    .stderr(std::process::Stdio::piped())
+                    .spawn()
+                {
+                    Ok(child) => { spawn_result = Some(child); break; }
+                    Err(_) => continue,
+                }
+            }
+            let child = spawn_result
+                .ok_or_else(|| "Failed to extract MinGit: PowerShell not found".to_string())?;
 
             stream_child_output(window, channel, child).await?;
 
