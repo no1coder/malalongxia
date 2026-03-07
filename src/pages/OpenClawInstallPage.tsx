@@ -15,8 +15,6 @@ export default function OpenClawInstallPage() {
   const {
     openclawInstallStatus,
     openclawInstallLogs,
-    selectedMirror,
-    setSelectedMirror,
     setOpenclawInstallStatus,
     setOpenclawVersion,
     addOpenclawInstallLog,
@@ -25,6 +23,8 @@ export default function OpenClawInstallPage() {
   const { goToStep } = useStepNavigation();
   const { npmMirrors, isLoading: mirrorsLoading } = useMirrorConfig();
 
+  // Local npm mirror selection (independent from Node mirror in previous step)
+  const [selectedNpmMirror, setSelectedNpmMirror] = useState<import("../types").Mirror | null>(null);
   const [mirrorLatencies, setMirrorLatencies] = useState<Record<string, number | null>>({});
   const [isTesting, setIsTesting] = useState(false);
   const [installPercent, setInstallPercent] = useState(0);
@@ -87,11 +87,11 @@ export default function OpenClawInstallPage() {
 
     if (fastest) {
       const fastestMirror = npmMirrors.find((m) => m.url === fastest[0]) ?? null;
-      setSelectedMirror(fastestMirror);
+      setSelectedNpmMirror(fastestMirror);
     }
 
     setIsTesting(false);
-  }, [npmMirrors, setSelectedMirror]);
+  }, [npmMirrors, setSelectedNpmMirror]);
 
   // Pre-flight: verify npm is available before allowing install
   useEffect(() => {
@@ -107,8 +107,8 @@ export default function OpenClawInstallPage() {
   // Auto-test speed once mirrors are loaded, default select first mirror
   useEffect(() => {
     if (mirrorsLoading || npmMirrors.length === 0) return;
-    if (!selectedMirror) {
-      setSelectedMirror(npmMirrors[0]);
+    if (!selectedNpmMirror) {
+      setSelectedNpmMirror(npmMirrors[0]);
     }
     testMirrorSpeed();
     // Only run when mirrors become available
@@ -117,7 +117,7 @@ export default function OpenClawInstallPage() {
 
   // Start OpenClaw installation
   const handleInstall = useCallback(async () => {
-    if (!selectedMirror) return;
+    if (!selectedNpmMirror) return;
 
     setOpenclawInstallStatus("installing");
     addOpenclawInstallLog({
@@ -128,7 +128,7 @@ export default function OpenClawInstallPage() {
 
     try {
       const result = await invoke<{ version: string }>("install_openclaw", {
-        mirror: selectedMirror.url,
+        mirror: selectedNpmMirror.url,
       });
       setOpenclawVersion(result.version);
       setOpenclawInstallStatus("success");
@@ -146,7 +146,7 @@ export default function OpenClawInstallPage() {
       });
     }
   }, [
-    selectedMirror,
+    selectedNpmMirror,
     setOpenclawInstallStatus,
     setOpenclawVersion,
     addOpenclawInstallLog,
@@ -248,10 +248,10 @@ export default function OpenClawInstallPage() {
                     key={mirror.url}
                     className={clsx(
                       "ocinstall-mirror",
-                      selectedMirror?.url === mirror.url && "selected",
+                      selectedNpmMirror?.url === mirror.url && "selected",
                       isFastest && "fastest"
                     )}
-                    onClick={() => !isInstalling && setSelectedMirror(mirror)}
+                    onClick={() => !isInstalling && setSelectedNpmMirror(mirror)}
                   >
                     <div className="ocinstall-mirror-radio" />
                     <div className="ocinstall-mirror-info">
@@ -326,9 +326,9 @@ export default function OpenClawInstallPage() {
           <button
             className={clsx(
               "ocinstall-btn ocinstall-btn-primary",
-              !isInstalling && selectedMirror && npmReady === true && "btn-cta-glow"
+              !isInstalling && selectedNpmMirror && npmReady === true && "btn-cta-glow"
             )}
-            disabled={isInstalling || npmReady !== true || !selectedMirror}
+            disabled={isInstalling || npmReady !== true || !selectedNpmMirror}
             onClick={handleInstall}
           >
             {isInstalling

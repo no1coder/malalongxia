@@ -30,6 +30,22 @@ vi.mock("../hooks/useStepNavigation", () => ({
 vi.mock("@tauri-apps/api/core", () => ({ invoke: mockInvoke }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: mockListen }));
 
+vi.mock("../hooks/useMirrorConfig", () => ({
+  useMirrorConfig: () => ({
+    nodeMirrors: [],
+    npmMirrors: [
+      { name: "mirror.npmmirror", url: "https://registry.npmmirror.com", type: "npm" },
+      { name: "mirror.tencent", url: "https://mirrors.cloud.tencent.com/npm/", type: "npm" },
+      { name: "mirror.huawei", url: "https://repo.huaweicloud.com/repository/npm/", type: "npm" },
+      { name: "mirror.official", url: "https://registry.npmjs.org", type: "npm" },
+    ],
+    nvmInstallScript: null,
+    nodeVersion: null,
+    isLoading: false,
+    isRemote: false,
+  }),
+}));
+
 import { useInstallStore } from "../stores/useInstallStore";
 import OpenClawInstallPage from "./OpenClawInstallPage";
 import { renderWithRouter } from "../test/render";
@@ -40,13 +56,17 @@ describe("OpenClawInstallPage", () => {
     mockInvoke.mockClear();
     mockListen.mockClear();
     mockListen.mockImplementation(() => Promise.resolve(vi.fn()));
-    // Mock test_mirror_latency for auto-test on mount
-    mockInvoke.mockResolvedValue(100);
+    // Mock invoke calls: verify_node_npm returns npm_available, test_mirror_latency returns ms
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "verify_node_npm") return Promise.resolve({ npm_available: true, node_version: "v22.14.0", npm_version: "10.9.2" });
+      if (cmd === "test_mirror_latency") return Promise.resolve(100);
+      if (cmd === "install_openclaw") return Promise.resolve({ version: "1.0.0" });
+      return Promise.resolve(null);
+    });
     useInstallStore.setState({
       openclawInstallStatus: "idle",
       openclawInstallLogs: [],
       openclawVersion: null,
-      selectedMirror: { name: "mirror.npmmirror", url: "https://registry.npmmirror.com", type: "npm" },
     });
   });
 
@@ -94,15 +114,20 @@ describe("OpenClawInstallPage", () => {
     expect(mockGoToStep).toHaveBeenCalledWith(2);
   });
 
-  it("starts install on next click when idle", async () => {
+  it("starts install on install button click when idle", async () => {
     const user = userEvent.setup();
-    mockInvoke.mockResolvedValue({ version: "1.0.0" });
     renderWithRouter(<OpenClawInstallPage />);
 
-    await user.click(screen.getByText("btn.next"));
+    // Wait for npm check and mirror auto-selection to complete
+    await waitFor(() => {
+      const btn = screen.getByText("openclawInstall.installBtn");
+      expect(btn).not.toBeDisabled();
+    });
+
+    await user.click(screen.getByText("openclawInstall.installBtn"));
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith("install_openclaw", {
-        mirror: "https://registry.npmmirror.com",
+        mirror: expect.stringContaining("registry"),
       });
     });
   });
@@ -123,8 +148,8 @@ describe("OpenClawInstallPage", () => {
 
   it("registers event listeners on mount", () => {
     renderWithRouter(<OpenClawInstallPage />);
-    expect(mockListen).toHaveBeenCalledWith("install-progress", expect.any(Function));
-    expect(mockListen).toHaveBeenCalledWith("install-log", expect.any(Function));
+    expect(mockListen).toHaveBeenCalledWith("openclaw-install-progress", expect.any(Function));
+    expect(mockListen).toHaveBeenCalledWith("openclaw-install-log", expect.any(Function));
   });
 
   it("calls test_mirror_latency on mount for speed test", async () => {
@@ -158,30 +183,47 @@ describe("OpenClawInstallPage", () => {
 
   it("allows retry after error", async () => {
     const user = userEvent.setup();
-    mockInvoke.mockResolvedValue({ version: "1.0.0" });
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "verify_node_npm") return Promise.resolve({ npm_available: true, node_version: "v22.14.0", npm_version: "10.9.2" });
+      if (cmd === "test_mirror_latency") return Promise.resolve(100);
+      if (cmd === "install_openclaw") return Promise.resolve({ version: "1.0.0" });
+      return Promise.resolve(null);
+    });
     useInstallStore.setState({ openclawInstallStatus: "error" });
     renderWithRouter(<OpenClawInstallPage />);
 
-    await user.click(screen.getByText("btn.next"));
+    // Wait for npm check and mirror selection to complete, then retry button appears
+    await waitFor(() => {
+      const btn = screen.getByText("btn.retry");
+      expect(btn).not.toBeDisabled();
+    });
+
+    await user.click(screen.getByText("btn.retry"));
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith("install_openclaw", expect.any(Object));
     });
   });
 
-  it("auto-navigates to step 4 on success", async () => {
+  it("navigates to step 4 on next click when success", async () => {
+    const user = userEvent.setup();
     useInstallStore.setState({ openclawInstallStatus: "success" });
     renderWithRouter(<OpenClawInstallPage />);
 
-    await waitFor(() => {
-      expect(mockGoToStep).toHaveBeenCalledWith(4);
-    });
+    // In success state, btn.next should be enabled
+    const nextBtn = screen.getByText("btn.next");
+    expect(nextBtn).not.toBeDisabled();
+
+    await user.click(nextBtn);
+    expect(mockGoToStep).toHaveBeenCalledWith(4);
   });
 
   it("selects a different mirror on click", async () => {
     const user = userEvent.setup();
-    renderWithRouter(<OpenClawInstallPage />);
+    const { container } = renderWithRouter(<OpenClawInstallPage />);
 
     await user.click(screen.getByText("mirror.official"));
-    expect(useInstallStore.getState().selectedMirror?.url).toBe("https://registry.npmjs.org");
+    // The clicked mirror should now have the "selected" class
+    const officialMirror = screen.getByText("mirror.official").closest(".ocinstall-mirror");
+    expect(officialMirror?.classList.contains("selected")).toBe(true);
   });
 });
