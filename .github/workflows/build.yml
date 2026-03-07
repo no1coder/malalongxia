@@ -36,7 +36,9 @@ jobs:
           node-version: 22
 
       - name: Install pnpm
-        run: corepack enable && corepack prepare pnpm@9 --activate
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
