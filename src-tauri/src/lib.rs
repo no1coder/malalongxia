@@ -8,8 +8,8 @@ use commands::config::{
     test_api_connection, update_openclaw,
 };
 use commands::environment::check_environment;
-use commands::install::{install_node, install_openclaw};
-use commands::mirror::{test_mirror_latency, test_mirrors};
+use commands::install::{install_node, install_openclaw, verify_node_npm};
+use commands::mirror::{fetch_mirror_config, test_mirror_latency, test_mirrors};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -19,8 +19,10 @@ pub fn run() {
             check_environment,
             test_mirrors,
             test_mirror_latency,
+            fetch_mirror_config,
             install_node,
             install_openclaw,
+            verify_node_npm,
             configure_api,
             test_api_connection,
             launch_openclaw,

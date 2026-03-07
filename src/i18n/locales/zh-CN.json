@@ -28,7 +28,8 @@
     "latency": "延迟",
     "testing": "测速中...",
     "untested": "未测试",
-    "testSpeed": "一键测速"
+    "testSpeed": "一键测速",
+    "loadingConfig": "正在加载镜像源配置..."
   },
   "log": {
     "empty": "暂无日志"
@@ -104,7 +105,8 @@
     "nvmDesc": "通过 nvm 管理多版本 Node.js，灵活切换",
     "directInstall": "直接安装",
     "directDesc": "直接下载安装包，简单快捷",
-    "installBtn": "开始安装 Node.js"
+    "installBtn": "开始安装 Node.js",
+    "verifyFailed": "{{missing}} 安装验证失败，请返回上一步重试或重启应用"
   },
   "openclawInstall": {
     "title": "安装 OpenClaw",
@@ -118,7 +120,9 @@
     "selectMirror": "选择镜像源",
     "fastest": "最快",
     "timeout": "超时",
-    "installBtn": "开始安装 OpenClaw"
+    "installBtn": "开始安装 OpenClaw",
+    "npmNotAvailable": "npm 不可用，无法安装 OpenClaw",
+    "npmNotAvailableHint": "请返回上一步安装 Node.js，或手动安装后重启应用"
   },
   "apiConfig": {
     "title": "AI API 配置",

@@ -333,3 +333,50 @@
   transform: none;
   box-shadow: none;
 }
+
+/* ----- npm Not Available Error ----- */
+.ocinstall-npm-error {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-md);
+  padding: var(--spacing-md);
+  background: var(--color-error-light);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--spacing-lg);
+}
+
+.ocinstall-npm-error svg {
+  color: var(--color-error);
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.ocinstall-npm-error-title {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-error);
+  margin-bottom: var(--spacing-xs);
+}
+
+.ocinstall-npm-error-hint {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  line-height: var(--line-height-normal);
+}
+
+/* ----- Mirrors Loading ----- */
+.ocinstall-mirrors-loading {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-md);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.ocinstall-mirrors-loading .spin {
+  animation: spin 1s linear infinite;
+}

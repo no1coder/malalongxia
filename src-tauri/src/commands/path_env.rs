@@ -34,6 +34,9 @@ pub fn expanded_path() -> String {
 
         // User local bin
         extra.push(home.join(".local/bin"));
+
+        // Direct install location used by this app
+        extra.push(home.join(".local/node/bin"));
     }
 
     #[cfg(windows)]
@@ -82,6 +85,63 @@ pub fn expanded_path() -> String {
 
     let sep = if cfg!(windows) { ";" } else { ":" };
     parts.join(sep)
+}
+
+/// Refresh the expanded PATH by re-reading system environment variables.
+/// On Windows, after an MSI installer modifies the system PATH, the current
+/// process still has the old PATH. This function reads the latest Machine and
+/// User PATH values from the Windows registry and merges them so that freshly
+/// installed programs (e.g. node/npm) become discoverable.
+#[cfg(windows)]
+pub fn refresh_system_path() {
+    use std::process::Command as StdCommand;
+
+    // Read Machine PATH from registry
+    let machine_path = StdCommand::new("reg")
+        .args(["query", r"HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment", "/v", "Path"])
+        .output()
+        .ok()
+        .and_then(|o| parse_reg_value(&String::from_utf8_lossy(&o.stdout)))
+        .unwrap_or_default();
+
+    // Read User PATH from registry
+    let user_path = StdCommand::new("reg")
+        .args(["query", r"HKCU\Environment", "/v", "Path"])
+        .output()
+        .ok()
+        .and_then(|o| parse_reg_value(&String::from_utf8_lossy(&o.stdout)))
+        .unwrap_or_default();
+
+    if !machine_path.is_empty() || !user_path.is_empty() {
+        let combined = format!("{};{}", machine_path, user_path);
+        std::env::set_var("PATH", &combined);
+    }
+}
+
+/// Parse a registry value from `reg query` output.
+/// Output format: `    Path    REG_EXPAND_SZ    C:\Windows\system32;...`
+/// Delimiters can be tabs or multiple spaces; we split on REG_SZ/REG_EXPAND_SZ.
+#[cfg(windows)]
+fn parse_reg_value(output: &str) -> Option<String> {
+    output.lines()
+        .find(|l| l.contains("REG_"))
+        .and_then(|line| {
+            // Find the position after "REG_SZ" or "REG_EXPAND_SZ"
+            if let Some(pos) = line.find("REG_EXPAND_SZ") {
+                Some(line[pos + "REG_EXPAND_SZ".len()..].trim().to_string())
+            } else if let Some(pos) = line.find("REG_SZ") {
+                Some(line[pos + "REG_SZ".len()..].trim().to_string())
+            } else {
+                None
+            }
+        })
+        .filter(|v| !v.is_empty())
+}
+
+#[cfg(not(windows))]
+pub fn refresh_system_path() {
+    // On Unix, PATH changes are applied via shell profile; no-op here.
+    // expanded_path() already scans common locations dynamically.
 }
 
 /// Resolve a glob pattern and push the last (latest) match into `out`.

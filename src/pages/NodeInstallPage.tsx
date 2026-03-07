@@ -4,18 +4,17 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useInstallStore } from "../stores/useInstallStore";
 import { useStepNavigation } from "../hooks/useStepNavigation";
-import type { Mirror } from "../types";
-import { CheckCircle2 } from "lucide-react";
+import { useMirrorConfig } from "../hooks/useMirrorConfig";
+import { CheckCircle2, AlertTriangle, Loader2 } from "lucide-react";
 import clsx from "clsx";
 import "./NodeInstallPage.css";
 
-// Mirror sources for Node.js downloads
-const NODE_MIRRORS: readonly Mirror[] = [
-  { name: "mirror.aliyun", url: "https://npmmirror.com/mirrors/node/", type: "node" },
-  { name: "mirror.tencent", url: "https://mirrors.cloud.tencent.com/nodejs-release/", type: "node" },
-  { name: "mirror.tsinghua", url: "https://mirrors.tuna.tsinghua.edu.cn/nodejs-release/", type: "node" },
-  { name: "mirror.huawei", url: "https://repo.huaweicloud.com/nodejs/", type: "node" },
-];
+interface NodeVerifyResult {
+  readonly node_available: boolean;
+  readonly npm_available: boolean;
+  readonly node_version: string | null;
+  readonly npm_version: string | null;
+}
 
 export default function NodeInstallPage() {
   const { t } = useTranslation();
@@ -32,9 +31,11 @@ export default function NodeInstallPage() {
     addNodeInstallLog,
   } = useInstallStore();
   const { goToStep } = useStepNavigation();
+  const { nodeMirrors, isLoading: mirrorsLoading } = useMirrorConfig();
 
   const [installPercent, setInstallPercent] = useState(0);
   const [installMessage, setInstallMessage] = useState("");
+  const [verifyError, setVerifyError] = useState<string | null>(null);
   const progressRef = useRef<HTMLDivElement>(null);
   const logsRef = useRef<HTMLDivElement>(null);
 
@@ -64,6 +65,7 @@ export default function NodeInstallPage() {
   const handleInstall = useCallback(async () => {
     if (!selectedMirror) return;
 
+    setVerifyError(null);
     setNodeInstallStatus("installing");
     addNodeInstallLog({
       timestamp: Date.now(),
@@ -76,6 +78,7 @@ export default function NodeInstallPage() {
         mirror: selectedMirror.url,
         method: nodeInstallMethod,
       });
+      // Backend already verified node/npm in post_install_verify
       setNodeInstallStatus("success");
       addNodeInstallLog({
         timestamp: Date.now(),
@@ -101,10 +104,30 @@ export default function NodeInstallPage() {
   const isInstalling = nodeInstallStatus === "installing";
   const isComplete = nodeInstallStatus === "success";
 
-  // "下一步" triggers install if needed, navigates if complete or not required
+  // Verify node/npm are available, then navigate to next step
+  const verifyAndProceed = useCallback(async () => {
+    setVerifyError(null);
+    try {
+      const result = await invoke<NodeVerifyResult>("verify_node_npm");
+      if (result.node_available && result.npm_available) {
+        goToStep(3);
+      } else {
+        const missing = [
+          !result.node_available && "Node.js",
+          !result.npm_available && "npm",
+        ].filter(Boolean).join(" / ");
+        setVerifyError(t("nodeInstall.verifyFailed", { missing }));
+      }
+    } catch (err) {
+      setVerifyError(String(err));
+    }
+  }, [goToStep, t]);
+
+  // "下一步" triggers install if needed, verifies before navigating
   const handleNext = useCallback(async () => {
     if (!nodeRequired || isComplete) {
-      goToStep(3);
+      // Even if "not required" or already installed, verify before proceeding
+      await verifyAndProceed();
       return;
     }
     // Allow retry after error
@@ -112,7 +135,7 @@ export default function NodeInstallPage() {
       setNodeInstallStatus("idle");
       await handleInstall();
     }
-  }, [nodeRequired, isComplete, nodeInstallStatus, selectedMirror, handleInstall, goToStep, setNodeInstallStatus]);
+  }, [nodeRequired, isComplete, nodeInstallStatus, selectedMirror, handleInstall, verifyAndProceed, setNodeInstallStatus]);
 
   // Scroll to progress area when install starts
   useEffect(() => {
@@ -128,12 +151,12 @@ export default function NodeInstallPage() {
     }
   }, [nodeInstallLogs]);
 
-  // Auto-navigate on success
+  // Auto-verify and navigate on successful install
   useEffect(() => {
     if (isComplete) {
-      goToStep(3);
+      verifyAndProceed();
     }
-  }, [isComplete, goToStep]);
+  }, [isComplete, verifyAndProceed]);
 
   const handleBack = () => {
     goToStep(1);
@@ -198,28 +221,35 @@ export default function NodeInstallPage() {
             {/* Mirror selection */}
             <div className="nodeinstall-mirror-section">
               <h3>{t("nodeInstall.mirrorSelect")}</h3>
-              <div className="nodeinstall-mirror-list">
-                {NODE_MIRRORS.map((mirror) => (
-                  <div
-                    key={mirror.url}
-                    className={clsx(
-                      "nodeinstall-mirror",
-                      selectedMirror?.url === mirror.url && "selected"
-                    )}
-                    onClick={() => !isInstalling && setSelectedMirror(mirror)}
-                  >
-                    <div className="nodeinstall-mirror-radio" />
-                    <span className="nodeinstall-mirror-name">
-                      {t(mirror.name)}
-                    </span>
-                    <span className="nodeinstall-mirror-latency">
-                      {mirror.latency != null
-                        ? `${mirror.latency}ms`
-                        : t("mirror.untested")}
-                    </span>
-                  </div>
-                ))}
-              </div>
+              {mirrorsLoading ? (
+                <div className="nodeinstall-mirrors-loading">
+                  <Loader2 className="spin" size={16} />
+                  <span>{t("mirror.loadingConfig")}</span>
+                </div>
+              ) : (
+                <div className="nodeinstall-mirror-list">
+                  {nodeMirrors.map((mirror) => (
+                    <div
+                      key={mirror.url}
+                      className={clsx(
+                        "nodeinstall-mirror",
+                        selectedMirror?.url === mirror.url && "selected"
+                      )}
+                      onClick={() => !isInstalling && setSelectedMirror(mirror)}
+                    >
+                      <div className="nodeinstall-mirror-radio" />
+                      <span className="nodeinstall-mirror-name">
+                        {t(mirror.name)}
+                      </span>
+                      <span className="nodeinstall-mirror-latency">
+                        {mirror.latency != null
+                          ? `${mirror.latency}ms`
+                          : t("mirror.untested")}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Progress bar */}
@@ -255,6 +285,14 @@ export default function NodeInstallPage() {
               </div>
             )}
           </>
+        )}
+
+        {/* Verification error */}
+        {verifyError && (
+          <div className="nodeinstall-verify-error">
+            <AlertTriangle />
+            <span>{verifyError}</span>
+          </div>
         )}
       </div>
 

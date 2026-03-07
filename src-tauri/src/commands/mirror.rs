@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
 #[derive(Debug, Serialize)]
@@ -9,6 +9,110 @@ pub struct MirrorResult {
     pub reachable: bool,
 }
 
+// Remote mirror configuration fetched from yuan.json
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MirrorEntry {
+    pub name: String,
+    pub url: String,
+    #[serde(default = "default_enabled")]
+    pub enabled: bool,
+}
+
+fn default_enabled() -> bool {
+    true
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RemoteMirrorConfig {
+    pub version: u32,
+    #[serde(default)]
+    pub updated_at: String,
+    pub node_mirrors: Vec<MirrorEntry>,
+    pub npm_mirrors: Vec<MirrorEntry>,
+    #[serde(default)]
+    pub nvm_install_script: Option<String>,
+    #[serde(default)]
+    pub node_version: Option<String>,
+}
+
+const REMOTE_CONFIG_URL: &str = "https://malalongxia.com/yuan.json";
+const FETCH_TIMEOUT_SECS: u64 = 8;
+
+// Local fallback mirrors (used when remote fetch fails)
+const FALLBACK_NODE_MIRRORS: &[(&str, &str)] = &[
+    ("mirror.aliyun", "https://npmmirror.com/mirrors/node/"),
+    ("mirror.tencent", "https://mirrors.cloud.tencent.com/nodejs-release/"),
+    ("mirror.tsinghua", "https://mirrors.tuna.tsinghua.edu.cn/nodejs-release/"),
+    ("mirror.huawei", "https://repo.huaweicloud.com/nodejs/"),
+];
+
+const FALLBACK_NPM_MIRRORS: &[(&str, &str)] = &[
+    ("mirror.npmmirror", "https://registry.npmmirror.com"),
+    ("mirror.tencent", "https://mirrors.cloud.tencent.com/npm/"),
+    ("mirror.huawei", "https://repo.huaweicloud.com/repository/npm/"),
+    ("mirror.official", "https://registry.npmjs.org"),
+];
+
+fn build_fallback_config() -> RemoteMirrorConfig {
+    RemoteMirrorConfig {
+        version: 0,
+        updated_at: String::new(),
+        node_mirrors: FALLBACK_NODE_MIRRORS
+            .iter()
+            .map(|(name, url)| MirrorEntry {
+                name: name.to_string(),
+                url: url.to_string(),
+                enabled: true,
+            })
+            .collect(),
+        npm_mirrors: FALLBACK_NPM_MIRRORS
+            .iter()
+            .map(|(name, url)| MirrorEntry {
+                name: name.to_string(),
+                url: url.to_string(),
+                enabled: true,
+            })
+            .collect(),
+        nvm_install_script: Some("https://gitee.com/mirrors/nvm/raw/master/install.sh".to_string()),
+        node_version: None,
+    }
+}
+
+/// Fetch mirror configuration from remote server, falling back to hardcoded defaults.
+#[tauri::command]
+pub async fn fetch_mirror_config() -> Result<RemoteMirrorConfig, String> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(FETCH_TIMEOUT_SECS))
+        .build()
+        .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
+
+    match client.get(REMOTE_CONFIG_URL).send().await {
+        Ok(resp) if resp.status().is_success() => {
+            match resp.json::<RemoteMirrorConfig>().await {
+                Ok(mut config) => {
+                    // Filter out disabled mirrors
+                    config.node_mirrors.retain(|m| m.enabled);
+                    config.npm_mirrors.retain(|m| m.enabled);
+                    Ok(config)
+                }
+                Err(e) => {
+                    eprintln!("Failed to parse remote mirror config: {}", e);
+                    Ok(build_fallback_config())
+                }
+            }
+        }
+        Ok(resp) => {
+            eprintln!("Remote mirror config returned status: {}", resp.status());
+            Ok(build_fallback_config())
+        }
+        Err(e) => {
+            eprintln!("Failed to fetch remote mirror config: {}", e);
+            Ok(build_fallback_config())
+        }
+    }
+}
+
+// Legacy hardcoded mirrors for backward compatibility with test_mirrors command
 const MIRRORS: &[(&str, &str)] = &[
     ("aliyun", "https://npmmirror.com"),
     ("tencent", "https://mirrors.cloud.tencent.com"),

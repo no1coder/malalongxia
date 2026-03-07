@@ -28,7 +28,8 @@
     "latency": "Latency",
     "testing": "Testing...",
     "untested": "Untested",
-    "testSpeed": "Test Speed"
+    "testSpeed": "Test Speed",
+    "loadingConfig": "Loading mirror config..."
   },
   "log": {
     "empty": "No logs yet"
@@ -104,7 +105,8 @@
     "nvmDesc": "Manage multiple Node.js versions with nvm",
     "directInstall": "Direct Install",
     "directDesc": "Download and install directly, simple and fast",
-    "installBtn": "Install Node.js"
+    "installBtn": "Install Node.js",
+    "verifyFailed": "{{missing}} verification failed. Go back to retry or restart the app."
   },
   "openclawInstall": {
     "title": "Install OpenClaw",
@@ -118,7 +120,9 @@
     "selectMirror": "Select Mirror",
     "fastest": "Fastest",
     "timeout": "Timeout",
-    "installBtn": "Install OpenClaw"
+    "installBtn": "Install OpenClaw",
+    "npmNotAvailable": "npm is not available, cannot install OpenClaw",
+    "npmNotAvailableHint": "Go back to install Node.js first, or install manually and restart the app."
   },
   "apiConfig": {
     "title": "AI API Configuration",

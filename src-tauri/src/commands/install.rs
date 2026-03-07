@@ -3,7 +3,7 @@ use tauri::{Emitter, Window};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
 
-use super::path_env::expanded_path;
+use super::path_env::{expanded_path, refresh_system_path};
 
 const NODE_VERSION: &str = "v22.14.0";
 
@@ -17,6 +17,108 @@ fn cmd(program: &str) -> Command {
 #[derive(Debug, Serialize)]
 pub struct InstallResult {
     pub version: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct NodeVerifyResult {
+    pub node_available: bool,
+    pub npm_available: bool,
+    pub node_version: Option<String>,
+    pub npm_version: Option<String>,
+}
+
+// Verify that node and npm are actually callable after installation.
+// Retries a few times with short delays to allow PATH propagation (especially on Windows).
+async fn post_install_verify(window: &Window) -> Result<(), String> {
+    emit_log(window, "Verifying Node.js installation...");
+
+    for attempt in 1..=5 {
+        // Refresh PATH from system registry (Windows) before each attempt
+        refresh_system_path();
+
+        let node_ok = cmd("node")
+            .arg("--version")
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .output()
+            .await
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+
+        let npm_ok = cmd("npm")
+            .arg("--version")
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .output()
+            .await
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+
+        if node_ok && npm_ok {
+            emit_log(window, "Node.js and npm verified successfully.");
+            return Ok(());
+        }
+
+        if attempt < 5 {
+            emit_log(
+                window,
+                &format!(
+                    "Verification attempt {}/5: node={}, npm={}. Retrying...",
+                    attempt,
+                    if node_ok { "ok" } else { "not found" },
+                    if npm_ok { "ok" } else { "not found" },
+                ),
+            );
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        }
+    }
+
+    Err("Node.js or npm is not available after installation. Please restart the app and try again.".to_string())
+}
+
+/// Frontend-callable command to verify node/npm availability.
+/// Used as a gate before proceeding to OpenClaw install step.
+#[tauri::command]
+pub async fn verify_node_npm() -> Result<NodeVerifyResult, String> {
+    // Refresh PATH so we pick up any recent installations
+    refresh_system_path();
+
+    let node_output = cmd("node")
+        .arg("--version")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .output()
+        .await;
+
+    let npm_output = cmd("npm")
+        .arg("--version")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .output()
+        .await;
+
+    let (node_available, node_version) = match node_output {
+        Ok(o) if o.status.success() => {
+            let v = String::from_utf8_lossy(&o.stdout).trim().to_string();
+            (true, if v.is_empty() { None } else { Some(v) })
+        }
+        _ => (false, None),
+    };
+
+    let (npm_available, npm_version) = match npm_output {
+        Ok(o) if o.status.success() => {
+            let v = String::from_utf8_lossy(&o.stdout).trim().to_string();
+            (true, if v.is_empty() { None } else { Some(v) })
+        }
+        _ => (false, None),
+    };
+
+    Ok(NodeVerifyResult {
+        node_available,
+        npm_available,
+        node_version,
+        npm_version,
+    })
 }
 
 // Emit a progress event to the frontend.
@@ -241,6 +343,8 @@ pub async fn install_node(mirror: String, method: String, window: Window) -> Res
             .map_err(|e| format!("Failed to install Node.js via nvm: {}", e))?;
 
         stream_child_output(&window, child).await?;
+        emit_progress(&window, 95, "Verifying Node.js...");
+        post_install_verify(&window).await?;
         emit_progress(&window, 100, "Node.js installed successfully via nvm!");
     } else {
         // Direct installation with download progress
@@ -330,6 +434,9 @@ pub async fn install_node(mirror: String, method: String, window: Window) -> Res
 
                 // Cleanup temp file
                 let _ = tokio::fs::remove_file(&tmp_path).await;
+
+                emit_progress(&window, 95, "Verifying Node.js...");
+                post_install_verify(&window).await?;
                 emit_progress(&window, 100, "Node.js installed successfully!");
             }
             "windows" => {
@@ -340,6 +447,8 @@ pub async fn install_node(mirror: String, method: String, window: Window) -> Res
                 download_with_progress(&window, &download_url, &tmp_str, 5, 70).await?;
 
                 emit_progress(&window, 75, "Running Node.js installer...");
+                emit_log(&window, "Running MSI installer (may require admin privileges)...");
+
                 let child = cmd("msiexec")
                     .args(["/i", &tmp_str, "/passive", "/norestart"])
                     .stdout(std::process::Stdio::piped())
@@ -347,9 +456,19 @@ pub async fn install_node(mirror: String, method: String, window: Window) -> Res
                     .spawn()
                     .map_err(|e| format!("Failed to run Node.js installer: {}", e))?;
 
-                stream_child_output(&window, child).await?;
+                if let Err(e) = stream_child_output(&window, child).await {
+                    // MSI failures are often permission-related on Windows
+                    let _ = tokio::fs::remove_file(&tmp_path).await;
+                    return Err(format!(
+                        "Node.js MSI installer failed: {}. Try running OpenClawX as Administrator.",
+                        e
+                    ));
+                }
 
                 let _ = tokio::fs::remove_file(&tmp_path).await;
+
+                emit_progress(&window, 90, "Verifying Node.js...");
+                post_install_verify(&window).await?;
                 emit_progress(&window, 100, "Node.js installed successfully!");
             }
             _ => return Err(format!("Unsupported OS: {}", os)),
@@ -362,6 +481,28 @@ pub async fn install_node(mirror: String, method: String, window: Window) -> Res
 #[tauri::command]
 pub async fn install_openclaw(mirror: String, window: Window) -> Result<InstallResult, String> {
     let registry = mirror.trim_end_matches('/');
+
+    // Pre-flight: ensure npm is available before proceeding
+    refresh_system_path();
+    let npm_check = cmd("npm")
+        .arg("--version")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .output()
+        .await;
+
+    match npm_check {
+        Ok(o) if o.status.success() => {
+            let v = String::from_utf8_lossy(&o.stdout).trim().to_string();
+            emit_log(&window, &format!("npm {} detected.", v));
+        }
+        _ => {
+            return Err(
+                "npm is not available. Please install Node.js first and ensure it is in your PATH."
+                    .to_string(),
+            );
+        }
+    }
 
     // Step 1: Configure npm registry
     emit_progress(&window, 0, "Configuring npm registry...");

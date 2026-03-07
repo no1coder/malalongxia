@@ -45,8 +45,8 @@ export function Layout({
           tabIndex={0}
           onKeyDown={(e) => { if (e.key === "Enter") openUrl("https://malalongxia.com"); }}
         >
-          <img className="layout__logo" src={appIcon} alt="OpenClaw" />
-          <h1 className="layout__title">OpenClaw</h1>
+          <img className="layout__logo" src={appIcon} alt="OpenClawX" />
+          <h1 className="layout__title">OpenClawX</h1>
         </div>
 
         <div className="layout__header-actions">

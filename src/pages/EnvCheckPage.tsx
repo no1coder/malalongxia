@@ -112,19 +112,28 @@ export default function EnvCheckPage() {
             result.data.osVersion as string
           );
         }
-        if (id === "node" && result.data) {
-          const version = result.data.version as string | null;
+        if (id === "node") {
+          const version = (result.data?.version as string | null) ?? null;
           setNodeVersion(version);
-          setNodeRequired(!version || result.status === "failed");
+          // Node is required if: no version found, check failed, OR check timed out/warned
+          setNodeRequired(!version || result.status === "failed" || result.status === "warning");
         }
-        if (id === "npm" && result.data) {
-          setNpmVersion(result.data.version as string | null);
+        if (id === "npm") {
+          setNpmVersion((result.data?.version as string | null) ?? null);
         }
         if (id === "disk") {
           setDiskSpaceOk(result.status !== "failed");
         }
       } catch {
         updateEnvCheck(id, "warning", t("envCheck.checkFailed"));
+        // If node/npm check threw, assume they are not available
+        if (id === "node") {
+          setNodeVersion(null);
+          setNodeRequired(true);
+        }
+        if (id === "npm") {
+          setNpmVersion(null);
+        }
       }
     },
     [
