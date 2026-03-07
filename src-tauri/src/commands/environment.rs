@@ -70,20 +70,53 @@ fn check_os() -> CheckResult {
     }
 }
 
-// Check if Node.js is installed and return its version.
+// Minimum Node.js version required by OpenClaw (v22.12.0)
+const MIN_NODE_MAJOR: u64 = 22;
+const MIN_NODE_MINOR: u64 = 12;
+const MIN_NODE_PATCH: u64 = 0;
+
+// Check if Node.js is installed and meets minimum version requirement.
 fn check_node() -> CheckResult {
     match run_command_output("node", &["--version"]) {
-        Some(version) => CheckResult {
-            status: "passed".to_string(),
-            detail: format!("Node.js {}", version),
-            data: Some(serde_json::json!({ "version": version })),
-        },
+        Some(version) => {
+            if node_version_meets_minimum(&version) {
+                CheckResult {
+                    status: "passed".to_string(),
+                    detail: format!("Node.js {}", version),
+                    data: Some(serde_json::json!({ "version": version })),
+                }
+            } else {
+                CheckResult {
+                    status: "failed".to_string(),
+                    detail: format!(
+                        "Node.js {} is too old (requires >= v{}.{}.{})",
+                        version, MIN_NODE_MAJOR, MIN_NODE_MINOR, MIN_NODE_PATCH,
+                    ),
+                    data: Some(serde_json::json!({ "version": version })),
+                }
+            }
+        }
         None => CheckResult {
             status: "failed".to_string(),
             detail: "Node.js is not installed".to_string(),
             data: None,
         },
     }
+}
+
+// Parse a version string like "v22.14.0" and check if it meets minimum.
+// Rejects pre-release versions (e.g. "v22.12.0-rc.1", "v23.0.0-nightly").
+fn node_version_meets_minimum(version: &str) -> bool {
+    let trimmed = version.trim().strip_prefix('v').unwrap_or(version.trim());
+    // Reject pre-release versions (contain '-' after version numbers)
+    if trimmed.contains('-') {
+        return false;
+    }
+    let parts: Vec<&str> = trimmed.split('.').collect();
+    let major = parts.first().and_then(|p| p.parse::<u64>().ok()).unwrap_or(0);
+    let minor = parts.get(1).and_then(|p| p.parse::<u64>().ok()).unwrap_or(0);
+    let patch = parts.get(2).and_then(|p| p.parse::<u64>().ok()).unwrap_or(0);
+    (major, minor, patch) >= (MIN_NODE_MAJOR, MIN_NODE_MINOR, MIN_NODE_PATCH)
 }
 
 // Check if npm/pnpm is installed and return version info.
@@ -157,16 +190,35 @@ async fn check_network() -> Result<CheckResult, String> {
     let elapsed_ms = start.elapsed().as_millis() as u64;
 
     match result {
-        Ok(_) => Ok(CheckResult {
-            status: "passed".to_string(),
-            detail: format!("Network OK ({}ms)", elapsed_ms),
-            data: Some(serde_json::json!({ "latencyMs": elapsed_ms })),
-        }),
-        Err(e) => Ok(CheckResult {
-            status: "failed".to_string(),
-            detail: format!("Network check failed: {}", e),
-            data: None,
-        }),
+        Ok(resp) => {
+            if resp.status().is_success() || resp.status().is_redirection() {
+                Ok(CheckResult {
+                    status: "passed".to_string(),
+                    detail: format!("Network OK ({}ms)", elapsed_ms),
+                    data: Some(serde_json::json!({ "latencyMs": elapsed_ms })),
+                })
+            } else {
+                Ok(CheckResult {
+                    status: "warning".to_string(),
+                    detail: format!("Mirror returned HTTP {} ({}ms)", resp.status().as_u16(), elapsed_ms),
+                    data: Some(serde_json::json!({ "latencyMs": elapsed_ms, "httpStatus": resp.status().as_u16() })),
+                })
+            }
+        }
+        Err(e) => {
+            let error_type = if e.is_timeout() {
+                "timeout"
+            } else if e.is_connect() {
+                "connect"
+            } else {
+                "other"
+            };
+            Ok(CheckResult {
+                status: "failed".to_string(),
+                detail: format!("Network check failed: {}", e),
+                data: Some(serde_json::json!({ "errorType": error_type })),
+            })
+        }
     }
 }
 
@@ -175,14 +227,17 @@ fn check_disk() -> CheckResult {
     let sys_disks = Disks::new_with_refreshed_list();
     let min_required_gb: f64 = 1.0;
 
-    // Find the root or primary disk, fallback to the largest disk
+    // Find the root or primary disk, fallback to the largest disk.
+    // On macOS APFS, prefer /System/Volumes/Data (writable data volume)
+    // over / (sealed read-only system volume) for accurate free space.
     let primary_disk = sys_disks
         .iter()
-        .find(|d| {
-            let mount = d.mount_point().to_string_lossy();
-            mount == "/"
-                || mount == "C:\\"
-                || mount == "/System/Volumes/Data"
+        .find(|d| d.mount_point().to_string_lossy() == "/System/Volumes/Data")
+        .or_else(|| {
+            sys_disks.iter().find(|d| {
+                let mount = d.mount_point().to_string_lossy();
+                mount == "/" || mount == "C:\\"
+            })
         })
         .or_else(|| {
             sys_disks.iter().max_by_key(|d| d.total_space())
@@ -381,12 +436,19 @@ mod tests {
     }
 
     #[test]
-    fn check_node_failed_has_no_data() {
+    fn check_node_failed_detail_is_descriptive() {
         let result = check_node();
         if result.status == "failed" {
-            // On systems without Node, data should be None
-            assert!(result.data.is_none());
-            assert!(result.detail.contains("not installed"));
+            // Two possible failure cases:
+            // 1. Not installed: data=None, detail contains "not installed"
+            // 2. Version too old: data=Some with version, detail contains "too old"
+            if result.data.is_none() {
+                assert!(result.detail.contains("not installed"));
+            } else {
+                assert!(result.detail.contains("too old"));
+                let data = result.data.unwrap();
+                assert!(data.get("version").is_some());
+            }
         }
     }
 
@@ -432,5 +494,22 @@ mod tests {
         };
         let json = serde_json::to_string(&result).unwrap();
         assert!(json.contains("\"data\":null"));
+    }
+
+    // node_version_meets_minimum edge cases
+    #[test]
+    fn version_meets_minimum_stable_releases() {
+        assert!(node_version_meets_minimum("v22.12.0"));
+        assert!(node_version_meets_minimum("v22.14.0"));
+        assert!(node_version_meets_minimum("v23.0.0"));
+        assert!(!node_version_meets_minimum("v22.11.0"));
+        assert!(!node_version_meets_minimum("v18.20.0"));
+    }
+
+    #[test]
+    fn version_rejects_prerelease() {
+        assert!(!node_version_meets_minimum("v22.12.0-rc.1"));
+        assert!(!node_version_meets_minimum("v23.0.0-nightly.20250101"));
+        assert!(!node_version_meets_minimum("v22.12.0-beta.1"));
     }
 }

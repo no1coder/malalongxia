@@ -117,12 +117,14 @@ export default function EnvCheckPage() {
         }
         if (id === "node") {
           const version = (result.data?.version as string | null) ?? null;
-          setNodeVersion(version);
-          // Node is required if: no version found, check failed, OR check timed out/warned
-          setNodeRequired(!version || result.status === "failed" || result.status === "warning");
+          // Only store the version if check passed (version meets minimum requirement).
+          // If version is too old (status=failed), treat as if not installed.
+          const versionOk = version && result.status === "passed";
+          setNodeVersion(versionOk ? version : null);
+          setNodeRequired(!versionOk);
         }
         if (id === "npm") {
-          setNpmVersion((result.data?.version as string | null) ?? null);
+          setNpmVersion((result.data?.npmVersion as string | null) ?? null);
         }
         if (id === "disk") {
           setDiskSpaceOk(result.status !== "failed");
@@ -154,11 +156,16 @@ export default function EnvCheckPage() {
   const runAllChecks = useCallback(async () => {
     setEnvChecks(INITIAL_CHECKS);
     setEnvCheckComplete(false);
+    // Reset derived state to avoid stale values from previous runs
+    setNodeVersion(null);
+    setNodeRequired(false);
+    setNpmVersion(null);
+    setDiskSpaceOk(true);
 
     await Promise.allSettled(INITIAL_CHECKS.map((check) => runCheck(check.id)));
 
     setEnvCheckComplete(true);
-  }, [runCheck, setEnvChecks, setEnvCheckComplete]);
+  }, [runCheck, setEnvChecks, setEnvCheckComplete, setNodeVersion, setNodeRequired, setNpmVersion, setDiskSpaceOk]);
 
   // Auto-start checks on mount
   useEffect(() => {

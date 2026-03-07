@@ -1,14 +1,19 @@
+import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
+import { getVersion } from "@tauri-apps/api/app";
 import { useStepNavigation } from "../hooks/useStepNavigation";
 import { ArrowRight } from "lucide-react";
 import appIcon from "../assets/app-icon.png";
 import "./WelcomePage.css";
 
-const APP_VERSION = "0.1.0";
-
 export default function WelcomePage() {
   const { t } = useTranslation();
   const { goToStep } = useStepNavigation();
+  const [appVersion, setAppVersion] = useState("0.0.0");
+
+  useEffect(() => {
+    getVersion().then(setAppVersion).catch(() => {});
+  }, []);
 
   const handleStart = () => {
     goToStep(1);
@@ -45,7 +50,7 @@ export default function WelcomePage() {
       </button>
 
       {/* Version */}
-      <span className="welcome-version">v{APP_VERSION}</span>
+      <span className="welcome-version">v{appVersion}</span>
     </div>
   );
 }

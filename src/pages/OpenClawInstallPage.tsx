@@ -19,6 +19,7 @@ export default function OpenClawInstallPage() {
     setOpenclawVersion,
     addOpenclawInstallLog,
     osType,
+    nodeRequired,
   } = useInstallStore();
   const { goToStep } = useStepNavigation();
   const { npmMirrors, isLoading: mirrorsLoading } = useMirrorConfig();
@@ -183,8 +184,10 @@ export default function OpenClawInstallPage() {
     }
   }, [openclawInstallLogs]);
 
+  // If Node was skipped (already installed), go back to EnvCheck (step 1),
+  // otherwise go back to NodeInstall (step 2).
   const handleBack = () => {
-    goToStep(2);
+    goToStep(nodeRequired ? 2 : 1);
   };
 
   return (

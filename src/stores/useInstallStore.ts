@@ -88,6 +88,7 @@ interface InstallState {
   readonly setApiBaseUrl: (url: string) => void;
   readonly setApiModel: (model: string) => void;
   readonly setApiTestStatus: (status: InstallStatus) => void;
+  readonly resetAll: () => void;
 }
 
 export const useInstallStore = create<InstallState>((set) => ({
@@ -150,11 +151,38 @@ export const useInstallStore = create<InstallState>((set) => ({
   setSelectedProvider: (provider) =>
     set({
       selectedProvider: provider,
+      apiKey: "",
       apiBaseUrl: provider?.baseUrl ?? "",
       apiModel: provider?.defaultModel ?? "",
+      apiTestStatus: "idle",
     }),
   setApiKey: (key) => set({ apiKey: key }),
   setApiBaseUrl: (url) => set({ apiBaseUrl: url }),
   setApiModel: (model) => set({ apiModel: model }),
   setApiTestStatus: (status) => set({ apiTestStatus: status }),
+  resetAll: () =>
+    set({
+      currentStep: 0,
+      osType: "unknown",
+      osVersion: "",
+      nodeVersion: null,
+      nodeRequired: false,
+      npmVersion: null,
+      diskSpaceOk: true,
+      envChecks: [],
+      envCheckComplete: false,
+      nodeInstallStatus: "idle",
+      nodeInstallMethod: "direct",
+      nodeInstallLogs: [],
+      selectedMirror: null,
+      mirrors: [],
+      openclawInstallStatus: "idle",
+      openclawVersion: null,
+      openclawInstallLogs: [],
+      selectedProvider: null,
+      apiKey: "",
+      apiBaseUrl: "",
+      apiModel: "",
+      apiTestStatus: "idle",
+    }),
 }));

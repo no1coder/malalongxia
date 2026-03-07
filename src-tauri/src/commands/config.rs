@@ -335,6 +335,11 @@ pub async fn configure_api(
     // Refresh PATH so we can find openclaw after a fresh install
     super::path_env::refresh_system_path();
 
+    // Verify openclaw is findable before attempting configuration
+    find_program("openclaw").map_err(|_| {
+        "openclaw is not found in PATH. If you just installed it, please restart the application and try again.".to_string()
+    })?;
+
     // Build the openclaw onboard command with provider-specific flags
     let mut args: Vec<String> = vec![
         "onboard".to_string(),
@@ -403,13 +408,19 @@ pub async fn configure_api(
     }
 
     let args_ref: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-    let onboard_output = cmd("openclaw")
+    let onboard_fut = cmd("openclaw")
         .args(&args_ref)
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
-        .output()
-        .await
-        .map_err(|e| format!("Failed to run openclaw onboard: {}", e))?;
+        .output();
+
+    let onboard_output = tokio::time::timeout(
+        std::time::Duration::from_secs(60),
+        onboard_fut,
+    )
+    .await
+    .map_err(|_| "openclaw onboard timed out after 60 seconds. Please check your network and try again.".to_string())?
+    .map_err(|e| format!("Failed to run openclaw onboard: {}", e))?;
 
     if !onboard_output.status.success() {
         let stderr = String::from_utf8_lossy(&onboard_output.stderr);
@@ -533,12 +544,16 @@ async fn configure_api_direct(
             serde_json::Value::String(full_model_id),
         );
 
-    // Write back
+    // Write back atomically: write to .tmp then rename to avoid corruption on crash
     let output = serde_json::to_string_pretty(&config)
         .map_err(|e| format!("Failed to serialize config: {}", e))?;
-    tokio::fs::write(&config_path, output)
+    let tmp_path = config_path.with_extension("json.tmp");
+    tokio::fs::write(&tmp_path, &output)
         .await
-        .map_err(|e| format!("Failed to write openclaw.json: {}", e))?;
+        .map_err(|e| format!("Failed to write openclaw.json.tmp: {}", e))?;
+    tokio::fs::rename(&tmp_path, &config_path)
+        .await
+        .map_err(|e| format!("Failed to rename openclaw.json.tmp: {}", e))?;
 
     Ok(())
 }
@@ -661,8 +676,17 @@ pub async fn launch_openclaw() -> Result<String, String> {
         .await
         .ok()
         .and_then(|s| {
-            // Take only the last 500 chars to keep the error message reasonable
-            let tail = if s.len() > 500 { &s[s.len() - 500..] } else { &s };
+            // Take only the last 500 chars to keep the error message reasonable.
+            // Use char boundary to avoid panic on multi-byte UTF-8 (e.g. Chinese).
+            let tail = if s.len() > 500 {
+                let mut start = s.len() - 500;
+                while !s.is_char_boundary(start) && start < s.len() {
+                    start += 1;
+                }
+                &s[start..]
+            } else {
+                &s
+            };
             if tail.is_empty() { None } else { Some(tail.to_string()) }
         })
         .unwrap_or_default();
@@ -949,29 +973,33 @@ pub async fn configure_feishu(
 ) -> Result<(), String> {
     find_program("openclaw")?;
 
-    // Set Feishu config via openclaw config set
-    let id_result = cmd("openclaw")
+    // Set Feishu config via openclaw config set.
+    // Run sequentially to avoid concurrent writes to the same config file.
+    let id_out = cmd("openclaw")
         .args(["config", "set", "channels.feishu.appId", &app_id])
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
-        .output();
+        .output()
+        .await;
 
-    let secret_result = cmd("openclaw")
+    let id_ok = id_out.map(|o| o.status.success()).unwrap_or(false);
+    if !id_ok {
+        return Err("Failed to set Feishu appId".to_string());
+    }
+
+    let secret_out = cmd("openclaw")
         .args(["config", "set", "channels.feishu.appSecret", &app_secret])
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
-        .output();
+        .output()
+        .await;
 
-    let (id_out, secret_out) = tokio::join!(id_result, secret_result);
-
-    let id_ok = id_out.map(|o| o.status.success()).unwrap_or(false);
     let secret_ok = secret_out.map(|o| o.status.success()).unwrap_or(false);
-
-    if id_ok && secret_ok {
-        Ok(())
-    } else {
-        Err("Failed to configure Feishu plugin".to_string())
+    if !secret_ok {
+        return Err("Failed to set Feishu appSecret".to_string());
     }
+
+    Ok(())
 }
 
 #[tauri::command]

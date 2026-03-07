@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Layout } from "./components/Layout";
 import { UpdateBanner } from "./components/UpdateBanner";
+import { useInstallStore } from "./stores/useInstallStore";
 import type { StepInfo } from "./components/StepIndicator";
 import WelcomePage from "./pages/WelcomePage";
 import EnvCheckPage from "./pages/EnvCheckPage";
@@ -115,6 +116,7 @@ function AppShell() {
   }, []);
 
   const handleReinstall = () => {
+    useInstallStore.getState().resetAll();
     setCheckState("install");
     navigate("/", { replace: true });
   };

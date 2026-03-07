@@ -285,6 +285,17 @@ async fn download_once(
         return Err(format!("Download failed with status: {}", response.status()));
     }
 
+    // Reject HTML error pages masquerading as downloads
+    if let Some(ct) = response.headers().get("content-type") {
+        let ct_str = ct.to_str().unwrap_or("");
+        if ct_str.starts_with("text/html") {
+            return Err(format!(
+                "Server returned HTML instead of a file (content-type: {}). The download URL may be invalid.",
+                ct_str
+            ));
+        }
+    }
+
     let total_size = response.content_length().unwrap_or(0);
     let mut downloaded: u64 = 0;
 
@@ -363,22 +374,31 @@ async fn stream_child_output(
         }
     });
 
-    let _ = stdout_handle.await;
-    let _ = stderr_handle.await;
-
-    // 10-minute timeout to prevent processes from hanging forever
-    let status = tokio::time::timeout(
+    // 10-minute timeout covers stdout/stderr drain AND process exit.
+    // Without this, hung child processes would block stdout/stderr join forever.
+    let result = tokio::time::timeout(
         std::time::Duration::from_secs(600),
-        child.wait(),
+        async {
+            let _ = tokio::join!(stdout_handle, stderr_handle);
+            child.wait().await
+        },
     )
-    .await
-    .map_err(|_| "Process timed out after 10 minutes".to_string())?
-    .map_err(|e| format!("Failed to wait for process: {}", e))?;
+    .await;
 
-    if !status.success() {
-        return Err(format!("Process exited with status: {}", status));
+    match result {
+        Err(_) => {
+            // Timeout elapsed — kill the child process to avoid orphan
+            let _ = child.kill().await;
+            Err("Process timed out after 10 minutes".to_string())
+        }
+        Ok(wait_result) => {
+            let status = wait_result.map_err(|e| format!("Failed to wait for process: {}", e))?;
+            if !status.success() {
+                return Err(format!("Process exited with status: {}", status));
+            }
+            Ok(())
+        }
     }
-    Ok(())
 }
 
 // Install portable Git (MinGit) on Windows, or git via package manager on other platforms.
@@ -477,10 +497,13 @@ async fn install_portable_git(window: &Window, channel: &str, app: &tauri::AppHa
                 Err(_) => {
                     // Fallback: PowerShell Expand-Archive
                     emit_log(window, channel, "tar not available, trying PowerShell...");
+                    // Escape single quotes for PowerShell string literals (e.g. O'Brien paths)
+                    let ps_tmp = tmp_str.replace('\'', "''");
+                    let ps_dest = git_dir.display().to_string().replace('\'', "''");
                     let extract_cmd = format!(
                         "Expand-Archive -Force -Path '{}' -DestinationPath '{}'",
-                        tmp_str,
-                        git_dir.display()
+                        ps_tmp,
+                        ps_dest
                     );
                     let ps_paths = [
                         "powershell.exe".to_string(),
@@ -762,6 +785,25 @@ pub async fn install_node(mirror: String, method: String, app: tauri::AppHandle,
             .map_err(|e| format!("Failed to install Node.js via nvm: {}", e))?;
 
         stream_child_output(&window, ch, child).await?;
+
+        // Add nvm node bin to process PATH so subsequent commands find node/npm/openclaw.
+        // The child shell ran `nvm use 22` but that only affects the child's env.
+        let nvm_node_bin = nvm_dir.join("versions").join("node");
+        if let Ok(entries) = glob::glob(&nvm_node_bin.join("*/bin").to_string_lossy()) {
+            let mut matches: Vec<std::path::PathBuf> = entries.filter_map(|e| e.ok()).collect();
+            matches.sort_by(|a, b| {
+                super::path_env::version_tuple_from_path(a)
+                    .cmp(&super::path_env::version_tuple_from_path(b))
+            });
+            if let Some(latest_bin) = matches.pop() {
+                let current = std::env::var("PATH").unwrap_or_default();
+                if !current.contains(&latest_bin.to_string_lossy().to_string()) {
+                    std::env::set_var("PATH", format!("{}:{}", latest_bin.display(), current));
+                    emit_log(&window, ch, &format!("Added {} to PATH", latest_bin.display()));
+                }
+            }
+        }
+
         emit_progress(&window, ch, 95, "Verifying Node.js...");
         post_install_verify(&window, ch).await?;
         emit_progress(&window, ch, 100, "Node.js installed successfully via nvm!");
@@ -927,14 +969,18 @@ pub async fn install_node(mirror: String, method: String, app: tauri::AppHandle,
                         // Fallback: PowerShell Expand-Archive + move contents
                         emit_log(&window, ch, "tar not available, trying PowerShell...");
                         let tmp_extract = std::env::temp_dir().join("node-extract");
+                        // Escape single quotes for PowerShell string literals
+                        let ps_tmp = tmp_str.replace('\'', "''");
+                        let ps_extract = tmp_extract.display().to_string().replace('\'', "''");
+                        let ps_node = node_dir.display().to_string().replace('\'', "''");
                         let extract_cmd = format!(
                             "Remove-Item -Recurse -Force '{}' -ErrorAction SilentlyContinue; \
                              Expand-Archive -Force -Path '{}' -DestinationPath '{}'; \
                              $sub = Get-ChildItem '{}' -Directory | Select-Object -First 1; \
                              if ($sub) {{ Get-ChildItem $sub.FullName | Move-Item -Destination '{}' -Force }}; \
                              Remove-Item -Recurse -Force '{}' -ErrorAction SilentlyContinue",
-                            tmp_extract.display(), tmp_str, tmp_extract.display(),
-                            tmp_extract.display(), node_dir.display(), tmp_extract.display()
+                            ps_extract, ps_tmp, ps_extract,
+                            ps_extract, ps_node, ps_extract
                         );
                         let ps_paths = [
                             "powershell.exe".to_string(),
@@ -1206,6 +1252,20 @@ pub async fn install_openclaw(mirror: String, app: tauri::AppHandle, window: Win
                 ));
             }
         }
+    }
+
+    // Verify openclaw binary is actually callable before declaring success.
+    // npm exit 0 doesn't guarantee the binary is in PATH.
+    refresh_system_path();
+    let oc_verify = cmd("openclaw")
+        .arg("--version")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .output()
+        .await;
+    if !oc_verify.map(|o| o.status.success()).unwrap_or(false) {
+        emit_log(&window, ch, "Warning: openclaw binary not immediately found in PATH.");
+        emit_log(&window, ch, "This may resolve after restarting the application.");
     }
 
     emit_progress(&window, ch, 100, "OpenClaw installed successfully!");

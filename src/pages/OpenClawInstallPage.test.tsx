@@ -106,12 +106,13 @@ describe("OpenClawInstallPage", () => {
     expect(selected).toBeInTheDocument();
   });
 
-  it("navigates back to step 2", async () => {
+  it("navigates back to step 1 when node was not required", async () => {
     const user = userEvent.setup();
     renderWithRouter(<OpenClawInstallPage />);
 
     await user.click(screen.getByText("btn.prev"));
-    expect(mockGoToStep).toHaveBeenCalledWith(2);
+    // When nodeRequired=false (default), skip NodeInstallPage and go to EnvCheck
+    expect(mockGoToStep).toHaveBeenCalledWith(1);
   });
 
   it("starts install on install button click when idle", async () => {

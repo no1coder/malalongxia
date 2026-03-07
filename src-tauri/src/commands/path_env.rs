@@ -180,15 +180,44 @@ pub fn refresh_system_path() {
     // expanded_path() already scans common locations dynamically.
 }
 
-/// Resolve a glob pattern and push the last (latest) match into `out`.
+/// Resolve a glob pattern and push the latest (highest version) match into `out`.
+/// Uses semantic version comparison so v22.x sorts after v9.x.
 #[cfg(unix)]
 fn push_glob_latest(out: &mut Vec<PathBuf>, pattern: &std::path::Path) {
     let pattern_str = pattern.to_string_lossy();
     if let Ok(entries) = glob::glob(&pattern_str) {
         let mut matches: Vec<PathBuf> = entries.filter_map(|e| e.ok()).collect();
-        matches.sort();
+        matches.sort_by(|a, b| {
+            let ver_a = extract_version_tuple(a);
+            let ver_b = extract_version_tuple(b);
+            ver_a.cmp(&ver_b)
+        });
         if let Some(last) = matches.pop() {
             out.push(last);
         }
     }
+}
+
+/// Extract a (major, minor, patch) version tuple from a path like
+/// `.nvm/versions/node/v22.14.0/bin` for semantic comparison.
+/// Falls back to (0, 0, 0) if no version pattern is found.
+pub fn version_tuple_from_path(path: &std::path::Path) -> (u64, u64, u64) {
+    extract_version_tuple(path)
+}
+
+#[cfg(unix)]
+fn extract_version_tuple(path: &std::path::Path) -> (u64, u64, u64) {
+    for component in path.components() {
+        let s = component.as_os_str().to_string_lossy();
+        // Match version directory names like "v22.14.0" or "22.14.0"
+        let trimmed = s.strip_prefix('v').unwrap_or(&s);
+        let parts: Vec<&str> = trimmed.split('.').collect();
+        if parts.len() >= 2 {
+            if let (Ok(major), Ok(minor)) = (parts[0].parse::<u64>(), parts[1].parse::<u64>()) {
+                let patch = parts.get(2).and_then(|p| p.parse::<u64>().ok()).unwrap_or(0);
+                return (major, minor, patch);
+            }
+        }
+    }
+    (0, 0, 0)
 }

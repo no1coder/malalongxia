@@ -36,6 +36,8 @@ export default function NodeInstallPage() {
   const isWindows = navigator.userAgent.includes("Windows");
   const progressRef = useRef<HTMLDivElement>(null);
   const logsRef = useRef<HTMLDivElement>(null);
+  // Track whether install completed during THIS mount (not a previous visit)
+  const justInstalled = useRef(false);
 
   // Test latency for all node mirrors in parallel
   const testMirrorSpeed = useCallback(async () => {
@@ -137,6 +139,7 @@ export default function NodeInstallPage() {
           setNodeVersion(result.node_version);
         }
       } catch { /* ignore */ }
+      justInstalled.current = true;
       setNodeInstallStatus("success");
       addNodeInstallLog({
         timestamp: Date.now(),
@@ -204,9 +207,10 @@ export default function NodeInstallPage() {
     }
   }, [nodeInstallLogs]);
 
-  // Auto-verify and navigate on successful install
+  // Auto-verify and navigate only when install completes during this session
   useEffect(() => {
-    if (isComplete) {
+    if (isComplete && justInstalled.current) {
+      justInstalled.current = false;
       verifyAndProceed();
     }
   }, [isComplete, verifyAndProceed]);

@@ -23,6 +23,10 @@ vi.mock("../hooks/useStepNavigation", () => ({
   }),
 }));
 
+vi.mock("@tauri-apps/api/app", () => ({
+  getVersion: () => Promise.resolve("1.2.3"),
+}));
+
 import WelcomePage from "./WelcomePage";
 import { renderWithRouter } from "../test/render";
 
@@ -42,9 +46,10 @@ describe("WelcomePage", () => {
     expect(screen.getByText("welcome.subtitle")).toBeInTheDocument();
   });
 
-  it("renders version number", () => {
+  it("renders version number", async () => {
     renderWithRouter(<WelcomePage />);
-    expect(screen.getByText("v0.1.0")).toBeInTheDocument();
+    // Version is loaded async from Tauri API (mocked to return "1.2.3")
+    expect(await screen.findByText("v1.2.3")).toBeInTheDocument();
   });
 
   it("renders start button", () => {
