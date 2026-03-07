@@ -1,11 +1,64 @@
 use serde::Serialize;
-use tauri::{Emitter, Window};
+use tauri::{Emitter, Manager, Window};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
 
 use super::path_env::{expanded_path, refresh_system_path};
 
 const NODE_VERSION: &str = "v22.14.0";
+
+/// Check if a bundled resource file exists in the app's resource directory.
+/// Full edition bundles Node.js and Git archives; Lite edition has none.
+/// Returns the path if the file exists, None otherwise.
+fn bundled_resource(app: &tauri::AppHandle, subdir: &str, filename: &str) -> Option<std::path::PathBuf> {
+    let resource_dir = app.path().resource_dir().ok()?;
+    let path = resource_dir.join("resources").join(subdir).join(filename);
+    if path.exists() { Some(path) } else { None }
+}
+
+/// Get the bundled Node.js archive path for the current platform.
+fn bundled_node_archive(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
+    let os = std::env::consts::OS;
+    let arch = std::env::consts::ARCH;
+    let filename = match os {
+        "macos" => {
+            let arch_str = if arch == "aarch64" { "arm64" } else { "x64" };
+            format!("node-{}-darwin-{}.tar.gz", NODE_VERSION, arch_str)
+        }
+        "windows" => {
+            let arch_str = if arch == "aarch64" { "arm64" } else { "x64" };
+            format!("node-{}-win-{}.zip", NODE_VERSION, arch_str)
+        }
+        _ => return None,
+    };
+    bundled_resource(app, "node", &filename)
+}
+
+/// Get the bundled Git archive path for the current platform.
+fn bundled_git_archive(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
+    let os = std::env::consts::OS;
+    let arch = std::env::consts::ARCH;
+    match os {
+        "windows" => {
+            let filename = if arch == "aarch64" {
+                "MinGit-2.53.0-arm64.zip"
+            } else {
+                "MinGit-2.53.0-64-bit.zip"
+            };
+            bundled_resource(app, "git", filename)
+        }
+        "macos" => {
+            let codename = detect_macos_codename();
+            let filename = if arch == "aarch64" {
+                format!("git-2.53.0-arm64_{}.bottle.tar.gz", codename)
+            } else {
+                format!("git-2.53.0-{}.bottle.tar.gz", codename)
+            };
+            bundled_resource(app, "git", &filename)
+        }
+        _ => None,
+    }
+}
 
 // Create a tokio Command with expanded PATH for finding node/npm in packaged apps.
 // On Windows, wraps the call through `cmd.exe /C` so that `.cmd` scripts (like npm.cmd)
@@ -351,34 +404,44 @@ fn detect_macos_codename() -> &'static str {
     "sonoma"
 }
 
-async fn install_portable_git(window: &Window, channel: &str) -> Result<(), String> {
+async fn install_portable_git(window: &Window, channel: &str, app: &tauri::AppHandle) -> Result<(), String> {
     let os = std::env::consts::OS;
 
     match os {
         "windows" => {
             let arch = std::env::consts::ARCH;
 
-            // Download MinGit from our own site (primary) with npmmirror fallback
-            let git_version = "2.53.0";
-            let filename = if arch == "aarch64" {
-                format!("MinGit-{}-arm64.zip", git_version)
-            } else {
-                format!("MinGit-{}-64-bit.zip", git_version)
-            };
-            let primary_url = format!("https://malalongxia.com/downloads/{}", filename);
-            let fallback_url = format!(
-                "https://registry.npmmirror.com/-/binary/git-for-windows/v{}.windows.1/{}",
-                git_version, filename
-            );
-
             let tmp_zip = std::env::temp_dir().join("mingit.zip");
             let tmp_str = tmp_zip.to_string_lossy().to_string();
 
-            emit_progress(window, channel, 2, "Downloading portable Git...");
-            let download_result = download_with_progress(window, channel, &primary_url, &tmp_str, 2, 8).await;
-            if download_result.is_err() {
-                emit_log(window, channel, "Primary download failed, trying npmmirror fallback...");
-                download_with_progress(window, channel, &fallback_url, &tmp_str, 2, 8).await?;
+            // Check for bundled Git archive first (Full edition)
+            if let Some(bundled_path) = bundled_git_archive(app) {
+                emit_log(window, channel, "Using bundled portable Git (offline)...");
+                emit_progress(window, channel, 2, "Extracting bundled Git...");
+                // Copy bundled archive to temp for consistent extraction flow
+                tokio::fs::copy(&bundled_path, &tmp_zip)
+                    .await
+                    .map_err(|e| format!("Failed to copy bundled Git: {}", e))?;
+            } else {
+                // Download MinGit from our own site (primary) with npmmirror fallback
+                let git_version = "2.53.0";
+                let filename = if arch == "aarch64" {
+                    format!("MinGit-{}-arm64.zip", git_version)
+                } else {
+                    format!("MinGit-{}-64-bit.zip", git_version)
+                };
+                let primary_url = format!("https://malalongxia.com/downloads/{}", filename);
+                let fallback_url = format!(
+                    "https://registry.npmmirror.com/-/binary/git-for-windows/v{}.windows.1/{}",
+                    git_version, filename
+                );
+
+                emit_progress(window, channel, 2, "Downloading portable Git...");
+                let download_result = download_with_progress(window, channel, &primary_url, &tmp_str, 2, 8).await;
+                if download_result.is_err() {
+                    emit_log(window, channel, "Primary download failed, trying npmmirror fallback...");
+                    download_with_progress(window, channel, &fallback_url, &tmp_str, 2, 8).await?;
+                }
             }
 
             // Extract to %LOCALAPPDATA%\Programs\MinGit
@@ -469,14 +532,10 @@ async fn install_portable_git(window: &Window, channel: &str) -> Result<(), Stri
             Ok(())
         }
         "macos" => {
-            // macOS: download standalone git .pkg installer (~50MB)
-            // Much faster than Xcode Command Line Tools (~1-2GB)
-            emit_log(window, channel, "Git not found. Downloading standalone Git installer...");
+            emit_log(window, channel, "Git not found. Installing Git...");
 
             let arch = std::env::consts::ARCH;
             let git_version = "2.53.0";
-            // Homebrew git bottles hosted on our own site (~22MB each)
-            // Detect macOS version for correct Homebrew bottle variant
             let macos_codename = detect_macos_codename();
             let filename = if arch == "aarch64" {
                 format!("git-{}-arm64_{}.bottle.tar.gz", git_version, macos_codename)
@@ -484,13 +543,22 @@ async fn install_portable_git(window: &Window, channel: &str) -> Result<(), Stri
                 format!("git-{}-{}.bottle.tar.gz", git_version, macos_codename)
             };
             emit_log(window, channel, &format!("Detected macOS variant: {}", macos_codename));
-            let url = format!("https://malalongxia.com/downloads/{}", filename);
 
             let tmp_tarball = std::env::temp_dir().join(&filename);
             let tmp_str = tmp_tarball.to_string_lossy().to_string();
 
-            emit_progress(window, channel, 2, "Downloading Git for macOS...");
-            download_with_progress(window, channel, &url, &tmp_str, 2, 8).await?;
+            // Check for bundled Git archive first (Full edition)
+            if let Some(bundled_path) = bundled_git_archive(app) {
+                emit_log(window, channel, "Using bundled Git (offline)...");
+                emit_progress(window, channel, 2, "Extracting bundled Git...");
+                tokio::fs::copy(&bundled_path, &tmp_tarball)
+                    .await
+                    .map_err(|e| format!("Failed to copy bundled Git: {}", e))?;
+            } else {
+                let url = format!("https://malalongxia.com/downloads/{}", filename);
+                emit_progress(window, channel, 2, "Downloading Git for macOS...");
+                download_with_progress(window, channel, &url, &tmp_str, 2, 8).await?;
+            }
 
             emit_progress(window, channel, 9, "Installing Git...");
 
@@ -633,7 +701,7 @@ fn build_node_download_url(mirror_base: &str) -> String {
 }
 
 #[tauri::command]
-pub async fn install_node(mirror: String, method: String, window: Window) -> Result<(), String> {
+pub async fn install_node(mirror: String, method: String, app: tauri::AppHandle, window: Window) -> Result<(), String> {
     let ch = "node-install";
     emit_progress(&window, ch, 0, "Starting Node.js installation...");
 
@@ -701,9 +769,6 @@ pub async fn install_node(mirror: String, method: String, window: Window) -> Res
         // Direct installation with download progress
         emit_progress(&window, ch, 5, "Preparing direct installation...");
 
-        let download_url = build_node_download_url(&mirror);
-        emit_log(&window, ch, &format!("Node.js download URL: {}", download_url));
-
         match os {
             "macos" | "linux" => {
                 let ext = if os == "linux" { "tar.xz" } else { "tar.gz" };
@@ -712,8 +777,19 @@ pub async fn install_node(mirror: String, method: String, window: Window) -> Res
                     .to_string_lossy()
                     .to_string();
 
-                // Download with progress (5% - 70%)
-                download_with_progress(&window, ch, &download_url, &tmp_path, 5, 70).await?;
+                // Check for bundled Node.js archive first (Full edition)
+                if let Some(bundled_path) = bundled_node_archive(&app) {
+                    emit_log(&window, ch, "Using bundled Node.js (offline)...");
+                    emit_progress(&window, ch, 10, "Copying bundled Node.js...");
+                    tokio::fs::copy(&bundled_path, &tmp_path)
+                        .await
+                        .map_err(|e| format!("Failed to copy bundled Node.js: {}", e))?;
+                } else {
+                    let download_url = build_node_download_url(&mirror);
+                    emit_log(&window, ch, &format!("Node.js download URL: {}", download_url));
+                    // Download with progress (5% - 70%)
+                    download_with_progress(&window, ch, &download_url, &tmp_path, 5, 70).await?;
+                }
 
                 emit_progress(&window, ch, 75, "Extracting Node.js...");
 
@@ -795,8 +871,19 @@ pub async fn install_node(mirror: String, method: String, window: Window) -> Res
                 let tmp_path = std::env::temp_dir().join("node-installer.zip");
                 let tmp_str = tmp_path.to_string_lossy().to_string();
 
-                // Download with progress (5% - 70%)
-                download_with_progress(&window, ch, &download_url, &tmp_str, 5, 70).await?;
+                // Check for bundled Node.js archive first (Full edition)
+                if let Some(bundled_path) = bundled_node_archive(&app) {
+                    emit_log(&window, ch, "Using bundled Node.js (offline)...");
+                    emit_progress(&window, ch, 10, "Copying bundled Node.js...");
+                    tokio::fs::copy(&bundled_path, &tmp_path)
+                        .await
+                        .map_err(|e| format!("Failed to copy bundled Node.js: {}", e))?;
+                } else {
+                    let download_url = build_node_download_url(&mirror);
+                    emit_log(&window, ch, &format!("Node.js download URL: {}", download_url));
+                    // Download with progress (5% - 70%)
+                    download_with_progress(&window, ch, &download_url, &tmp_str, 5, 70).await?;
+                }
 
                 emit_progress(&window, ch, 75, "Extracting Node.js...");
                 emit_log(&window, ch, "Extracting portable Node.js (no admin required)...");
@@ -923,7 +1010,7 @@ fn classify_install_error(err: &str) -> &'static str {
 }
 
 #[tauri::command]
-pub async fn install_openclaw(mirror: String, window: Window) -> Result<InstallResult, String> {
+pub async fn install_openclaw(mirror: String, app: tauri::AppHandle, window: Window) -> Result<InstallResult, String> {
     let ch = "openclaw-install";
     let registry = mirror.trim_end_matches('/');
 
@@ -940,7 +1027,7 @@ pub async fn install_openclaw(mirror: String, window: Window) -> Result<InstallR
 
     if !git_ok {
         emit_log(&window, ch, "Git not found. Installing portable Git...");
-        install_portable_git(&window, ch).await?;
+        install_portable_git(&window, ch, &app).await?;
         refresh_system_path();
     } else {
         emit_log(&window, ch, "Git detected.");

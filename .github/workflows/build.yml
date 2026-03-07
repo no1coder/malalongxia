@@ -9,21 +9,43 @@ on:
 permissions:
   contents: write
 
+env:
+  NODE_VERSION: "v22.14.0"
+  GIT_VERSION: "2.53.0"
+  NODE_MIRROR: "https://npmmirror.com/mirrors/node"
+
 jobs:
   build:
     strategy:
       fail-fast: false
       matrix:
         include:
+          # Full edition (bundled Node.js + Git)
           - platform: macos-latest
             target: aarch64-apple-darwin
-            label: macOS-arm64
+            label: macOS-arm64-Full
+            edition: full
           - platform: macos-latest
             target: x86_64-apple-darwin
-            label: macOS-x64
+            label: macOS-x64-Full
+            edition: full
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
-            label: Windows-x64
+            label: Windows-x64-Full
+            edition: full
+          # Lite edition (online download)
+          - platform: macos-latest
+            target: aarch64-apple-darwin
+            label: macOS-arm64-Lite
+            edition: lite
+          - platform: macos-latest
+            target: x86_64-apple-darwin
+            label: macOS-x64-Lite
+            edition: lite
+          - platform: windows-latest
+            target: x86_64-pc-windows-msvc
+            label: Windows-x64-Lite
+            edition: lite
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -53,6 +75,78 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
+      # --- Full edition: download bundled resources ---
+      - name: Download bundled Node.js (Full - macOS arm64)
+        if: matrix.edition == 'full' && matrix.target == 'aarch64-apple-darwin'
+        run: |
+          mkdir -p src-tauri/resources/node
+          curl -L -o src-tauri/resources/node/node-${{ env.NODE_VERSION }}-darwin-arm64.tar.gz \
+            "${{ env.NODE_MIRROR }}/${{ env.NODE_VERSION }}/node-${{ env.NODE_VERSION }}-darwin-arm64.tar.gz"
+
+      - name: Download bundled Node.js (Full - macOS x64)
+        if: matrix.edition == 'full' && matrix.target == 'x86_64-apple-darwin'
+        run: |
+          mkdir -p src-tauri/resources/node
+          curl -L -o src-tauri/resources/node/node-${{ env.NODE_VERSION }}-darwin-x64.tar.gz \
+            "${{ env.NODE_MIRROR }}/${{ env.NODE_VERSION }}/node-${{ env.NODE_VERSION }}-darwin-x64.tar.gz"
+
+      - name: Download bundled Node.js + MinGit (Full - Windows)
+        if: matrix.edition == 'full' && matrix.target == 'x86_64-pc-windows-msvc'
+        shell: bash
+        run: |
+          mkdir -p src-tauri/resources/node src-tauri/resources/git
+          curl -L -o src-tauri/resources/node/node-${{ env.NODE_VERSION }}-win-x64.zip \
+            "${{ env.NODE_MIRROR }}/${{ env.NODE_VERSION }}/node-${{ env.NODE_VERSION }}-win-x64.zip"
+          curl -L -o src-tauri/resources/git/MinGit-${{ env.GIT_VERSION }}-64-bit.zip \
+            "https://registry.npmmirror.com/-/binary/git-for-windows/v${{ env.GIT_VERSION }}.windows.1/MinGit-${{ env.GIT_VERSION }}-64-bit.zip"
+
+      - name: Download bundled Git bottle (Full - macOS arm64)
+        if: matrix.edition == 'full' && matrix.target == 'aarch64-apple-darwin'
+        run: |
+          mkdir -p src-tauri/resources/git
+          # Download sonoma bottle (compatible with sequoia via fallback)
+          TOKEN=$(curl -s "https://ghcr.io/token?scope=repository:homebrew/core/git:pull" | python3 -c "import json,sys;print(json.load(sys.stdin)['token'])")
+          curl -L -H "Authorization: Bearer $TOKEN" -o src-tauri/resources/git/git-${{ env.GIT_VERSION }}-arm64_sonoma.bottle.tar.gz \
+            "https://ghcr.io/v2/homebrew/core/git/blobs/sha256:90035e05c20b14efb12550b50431b53da8d857ccd5d29ac7fafe8ab0f959d16e"
+
+      - name: Download bundled Git bottle (Full - macOS x64)
+        if: matrix.edition == 'full' && matrix.target == 'x86_64-apple-darwin'
+        run: |
+          mkdir -p src-tauri/resources/git
+          TOKEN=$(curl -s "https://ghcr.io/token?scope=repository:homebrew/core/git:pull" | python3 -c "import json,sys;print(json.load(sys.stdin)['token'])")
+          curl -L -H "Authorization: Bearer $TOKEN" -o src-tauri/resources/git/git-${{ env.GIT_VERSION }}-sonoma.bottle.tar.gz \
+            "https://ghcr.io/v2/homebrew/core/git/blobs/sha256:4831766b1d63c27c19f6c84e2f74a2c2b1131a69f818467fab6b84536ca26d90"
+
+      - name: Verify bundled resources (Full)
+        if: matrix.edition == 'full'
+        shell: bash
+        run: |
+          echo "=== Bundled resources ==="
+          find src-tauri/resources -type f -exec ls -lh {} \;
+          # Verify files are not empty
+          for f in $(find src-tauri/resources -type f); do
+            size=$(stat -f%z "$f" 2>/dev/null || stat -c%s "$f" 2>/dev/null)
+            if [ "$size" -lt 1000 ]; then
+              echo "ERROR: $f is too small ($size bytes), download may have failed"
+              exit 1
+            fi
+          done
+          echo "All resources verified."
+
+      - name: Inject resources config into tauri.conf.json (Full)
+        if: matrix.edition == 'full'
+        shell: bash
+        run: |
+          # Add resources to bundle config using node
+          node -e "
+            const fs = require('fs');
+            const conf = JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json', 'utf8'));
+            conf.bundle.resources = { 'resources/**/*': 'resources/' };
+            fs.writeFileSync('src-tauri/tauri.conf.json', JSON.stringify(conf, null, 2) + '\n');
+            console.log('Injected resources config into tauri.conf.json');
+          "
+
+      # --- Build ---
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
         env:
@@ -64,15 +158,43 @@ jobs:
             ## OpenClawX ${{ github.ref_name }}
 
             ### Downloads
+
+            **Full 完整版**（推荐，内置 Node.js + Git，无需联网安装）
             | Platform | File |
             |----------|------|
-            | macOS (Apple Silicon) | `OpenClawX_*_aarch64.dmg` |
-            | macOS (Intel) | `OpenClawX_*_x64.dmg` |
-            | Windows | `OpenClawX_*_x64-setup.exe` |
+            | macOS (Apple Silicon) | `OpenClawX_*_aarch64.dmg` (Full) |
+            | macOS (Intel) | `OpenClawX_*_x64.dmg` (Full) |
+            | Windows | `OpenClawX_*_x64-setup.exe` (Full) |
 
-            ### Changes
-            - 18 installation stability improvements
-            - Cross-platform reliability enhancements
+            **Lite 精简版**（体积小，运行时在线下载依赖）
+            | Platform | File |
+            |----------|------|
+            | macOS (Apple Silicon) | `OpenClawX_*_aarch64.dmg` (Lite) |
+            | macOS (Intel) | `OpenClawX_*_x64.dmg` (Lite) |
+            | Windows | `OpenClawX_*_x64-setup.exe` (Lite) |
           releaseDraft: true
           prerelease: false
           args: --target ${{ matrix.target }}
+
+      # --- Rename artifacts to include edition suffix ---
+      - name: Rename artifacts with edition suffix (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          cd src-tauri/target/${{ matrix.target }}/release/bundle/dmg
+          for f in *.dmg; do
+            base="${f%.dmg}"
+            mv "$f" "${base}-${{ matrix.edition }}.dmg"
+            echo "Renamed: $f -> ${base}-${{ matrix.edition }}.dmg"
+          done
+
+      - name: Rename artifacts with edition suffix (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          cd src-tauri/target/${{ matrix.target }}/release/bundle/nsis
+          for f in *.exe; do
+            base="${f%.exe}"
+            mv "$f" "${base}-${{ matrix.edition }}.exe"
+            echo "Renamed: $f -> ${base}-${{ matrix.edition }}.exe"
+          done

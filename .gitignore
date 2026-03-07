@@ -34,6 +34,9 @@ website/downloads/
 skills/
 skills-lock.json
 
+# Bundled resources (downloaded by CI for Full edition, too large for git)
+src-tauri/resources/
+
 # Rust / Tauri
 src-tauri/target/
 src-tauri/gen/
