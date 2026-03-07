@@ -8,6 +8,7 @@ import {
   Monitor,
   Cpu,
   Package,
+  GitBranch,
   Wifi,
   HardDrive,
   Loader2,
@@ -27,6 +28,7 @@ const CHECK_ICONS: Record<string, React.ElementType> = {
   os: Monitor,
   node: Cpu,
   npm: Package,
+  git: GitBranch,
   network: Wifi,
   disk: HardDrive,
 };
@@ -54,6 +56,7 @@ const INITIAL_CHECKS: readonly EnvCheckItem[] = [
   { id: "os", name: "envCheck.os", status: "pending", detail: "" },
   { id: "node", name: "envCheck.node", status: "pending", detail: "" },
   { id: "npm", name: "envCheck.npm", status: "pending", detail: "" },
+  { id: "git", name: "envCheck.git", status: "pending", detail: "" },
   { id: "network", name: "envCheck.network", status: "pending", detail: "" },
   { id: "disk", name: "envCheck.disk", status: "pending", detail: "" },
 ];

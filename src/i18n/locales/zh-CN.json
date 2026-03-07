@@ -69,6 +69,7 @@
     "os": "操作系统",
     "node": "Node.js",
     "npm": "npm",
+    "git": "Git",
     "network": "网络连接",
     "disk": "磁盘空间",
     "osCheck": "操作系统检测",

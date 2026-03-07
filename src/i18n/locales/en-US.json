@@ -69,6 +69,7 @@
     "os": "Operating System",
     "node": "Node.js",
     "npm": "npm",
+    "git": "Git",
     "network": "Network",
     "disk": "Disk Space",
     "osCheck": "Operating System Check",

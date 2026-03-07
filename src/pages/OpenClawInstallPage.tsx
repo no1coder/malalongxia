@@ -5,16 +5,10 @@ import { listen } from "@tauri-apps/api/event";
 import { useInstallStore } from "../stores/useInstallStore";
 import { useStepNavigation } from "../hooks/useStepNavigation";
 import { useMirrorConfig } from "../hooks/useMirrorConfig";
+import type { NodeVerifyResult } from "../types";
 import { Info, AlertTriangle, Loader2 } from "lucide-react";
 import clsx from "clsx";
 import "./OpenClawInstallPage.css";
-
-interface NodeVerifyResult {
-  readonly node_available: boolean;
-  readonly npm_available: boolean;
-  readonly node_version: string | null;
-  readonly npm_version: string | null;
-}
 
 export default function OpenClawInstallPage() {
   const { t } = useTranslation();
@@ -42,12 +36,12 @@ export default function OpenClawInstallPage() {
   useEffect(() => {
     const unlisteners: (() => void)[] = [];
 
-    listen<{ percent: number; message: string }>("install-progress", (event) => {
+    listen<{ percent: number; message: string }>("openclaw-install-progress", (event) => {
       setInstallPercent(event.payload.percent);
       setInstallMessage(event.payload.message);
     }).then((unlisten) => unlisteners.push(unlisten));
 
-    listen<string>("install-log", (event) => {
+    listen<string>("openclaw-install-log", (event) => {
       addOpenclawInstallLog({
         timestamp: Date.now(),
         level: "info",
@@ -167,18 +161,12 @@ export default function OpenClawInstallPage() {
     .filter(([, lat]) => lat != null)
     .sort(([, a], [, b]) => (a ?? Infinity) - (b ?? Infinity))[0]?.[0];
 
-  // "下一步" triggers install if idle, navigates if complete
-  const handleNext = useCallback(async () => {
+  // "下一步" only navigates when install is complete
+  const handleNext = useCallback(() => {
     if (isComplete) {
       goToStep(4);
-      return;
     }
-    // Allow retry after error
-    if ((openclawInstallStatus === "idle" || openclawInstallStatus === "error") && selectedMirror) {
-      setOpenclawInstallStatus("idle");
-      await handleInstall();
-    }
-  }, [isComplete, openclawInstallStatus, selectedMirror, handleInstall, goToStep, setOpenclawInstallStatus]);
+  }, [isComplete, goToStep]);
 
   // Scroll to progress area when install starts
   useEffect(() => {
@@ -193,13 +181,6 @@ export default function OpenClawInstallPage() {
       logsRef.current.scrollTop = logsRef.current.scrollHeight;
     }
   }, [openclawInstallLogs]);
-
-  // Auto-navigate on success
-  useEffect(() => {
-    if (isComplete) {
-      goToStep(4);
-    }
-  }, [isComplete, goToStep]);
 
   const handleBack = () => {
     goToStep(2);
@@ -332,17 +313,35 @@ export default function OpenClawInstallPage() {
         >
           {t("btn.prev")}
         </button>
+
+        {/* Install / Retry button — only before success */}
+        {!isComplete && (
+          <button
+            className={clsx(
+              "ocinstall-btn ocinstall-btn-primary",
+              !isInstalling && selectedMirror && npmReady === true && "btn-cta-glow"
+            )}
+            disabled={isInstalling || npmReady !== true || !selectedMirror}
+            onClick={handleInstall}
+          >
+            {isInstalling
+              ? t("openclawInstall.installing")
+              : isFailed
+                ? t("btn.retry")
+                : t("openclawInstall.installBtn")}
+          </button>
+        )}
+
+        {/* Next button — enabled only after success */}
         <button
           className={clsx(
             "ocinstall-btn ocinstall-btn-primary",
-            !isInstalling && selectedMirror && "btn-cta-glow"
+            isComplete && "btn-cta-glow"
           )}
-          disabled={isInstalling || npmReady !== true || (!isComplete && !isFailed && !selectedMirror)}
+          disabled={!isComplete}
           onClick={handleNext}
         >
-          {isInstalling
-            ? t("openclawInstall.installing")
-            : t("btn.next")}
+          {t("btn.next")}
         </button>
       </div>
     </div>

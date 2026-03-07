@@ -41,8 +41,8 @@ pub struct NodeVerifyResult {
 
 // Verify that node and npm are actually callable after installation.
 // Retries a few times with short delays to allow PATH propagation (especially on Windows).
-async fn post_install_verify(window: &Window) -> Result<(), String> {
-    emit_log(window, "Verifying Node.js installation...");
+async fn post_install_verify(window: &Window, channel: &str) -> Result<(), String> {
+    emit_log(window, channel, "Verifying Node.js installation...");
 
     for attempt in 1..=5 {
         // Refresh PATH from system registry (Windows) before each attempt
@@ -67,13 +67,14 @@ async fn post_install_verify(window: &Window) -> Result<(), String> {
             .unwrap_or(false);
 
         if node_ok && npm_ok {
-            emit_log(window, "Node.js and npm verified successfully.");
+            emit_log(window, channel, "Node.js and npm verified successfully.");
             return Ok(());
         }
 
         if attempt < 5 {
             emit_log(
                 window,
+                channel,
                 &format!(
                     "Verification attempt {}/5: node={}, npm={}. Retrying...",
                     attempt,
@@ -133,30 +134,31 @@ pub async fn verify_node_npm() -> Result<NodeVerifyResult, String> {
     })
 }
 
-// Emit a progress event to the frontend.
-fn emit_progress(window: &Window, percent: u32, message: &str) {
+// Emit a progress event to the frontend with a channel prefix.
+fn emit_progress(window: &Window, channel: &str, percent: u32, message: &str) {
     let payload = serde_json::json!({
         "percent": percent,
         "message": message,
     });
-    let _ = window.emit("install-progress", payload);
+    let _ = window.emit(&format!("{}-progress", channel), payload);
 }
 
-// Emit a log line to the frontend.
-fn emit_log(window: &Window, line: &str) {
-    let _ = window.emit("install-log", line.to_string());
+// Emit a log line to the frontend with a channel prefix.
+fn emit_log(window: &Window, channel: &str, line: &str) {
+    let _ = window.emit(&format!("{}-log", channel), line.to_string());
 }
 
 // Download a file with progress reporting via Tauri events.
 // Returns the path to the downloaded file.
 async fn download_with_progress(
     window: &Window,
+    channel: &str,
     url: &str,
     dest: &str,
     progress_start: u32,
     progress_end: u32,
 ) -> Result<(), String> {
-    emit_log(window, &format!("Downloading from {}", url));
+    emit_log(window, channel, &format!("Downloading from {}", url));
 
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(300))
@@ -203,6 +205,7 @@ async fn download_with_progress(
                 let total_mb = total_size as f64 / 1_048_576.0;
                 emit_progress(
                     window,
+                    channel,
                     percent,
                     &format!("Downloading... {:.1}MB / {:.1}MB", downloaded_mb, total_mb),
                 );
@@ -216,7 +219,7 @@ async fn download_with_progress(
         .map_err(|e| format!("Flush error: {}", e))?;
 
     let downloaded_mb = downloaded as f64 / 1_048_576.0;
-    emit_log(window, &format!("Download complete: {:.1}MB", downloaded_mb));
+    emit_log(window, channel, &format!("Download complete: {:.1}MB", downloaded_mb));
 
     Ok(())
 }
@@ -224,27 +227,30 @@ async fn download_with_progress(
 // Stream stdout and stderr of a child process to the frontend via events.
 async fn stream_child_output(
     window: &Window,
+    channel: &str,
     mut child: tokio::process::Child,
 ) -> Result<(), String> {
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
 
     let w1 = window.clone();
+    let ch1 = channel.to_string();
     let stdout_handle = tokio::spawn(async move {
         if let Some(out) = stdout {
             let mut reader = BufReader::new(out).lines();
             while let Ok(Some(line)) = reader.next_line().await {
-                emit_log(&w1, &line);
+                emit_log(&w1, &ch1, &line);
             }
         }
     });
 
     let w2 = window.clone();
+    let ch2 = channel.to_string();
     let stderr_handle = tokio::spawn(async move {
         if let Some(err) = stderr {
             let mut reader = BufReader::new(err).lines();
             while let Ok(Some(line)) = reader.next_line().await {
-                emit_log(&w2, &line);
+                emit_log(&w2, &ch2, &line);
             }
         }
     });
@@ -265,6 +271,126 @@ async fn stream_child_output(
         return Err(format!("Process exited with status: {}", status));
     }
     Ok(())
+}
+
+// Install portable Git (MinGit) on Windows, or git via package manager on other platforms.
+// MinGit is the official lightweight Git for Windows distribution (~30MB).
+async fn install_portable_git(window: &Window, channel: &str) -> Result<(), String> {
+    let os = std::env::consts::OS;
+
+    match os {
+        "windows" => {
+            let arch = std::env::consts::ARCH;
+            let arch_str = if arch == "aarch64" { "arm64" } else { "64" };
+
+            // Use npmmirror's git-for-windows mirror for reliable China downloads
+            let git_version = "2.47.1";
+            let mingit_version = "2.47.1.windows.1";
+            let url = format!(
+                "https://registry.npmmirror.com/-/binary/git-for-windows/v{}/MinGit-{}-{}-bit.zip",
+                git_version, mingit_version, arch_str
+            );
+
+            let tmp_zip = std::env::temp_dir().join("mingit.zip");
+            let tmp_str = tmp_zip.to_string_lossy().to_string();
+
+            emit_progress(window, channel, 2, "Downloading portable Git...");
+            download_with_progress(window, channel, &url, &tmp_str, 2, 8).await?;
+
+            // Extract to %LOCALAPPDATA%\Programs\MinGit
+            let local_app_data = std::env::var("LOCALAPPDATA")
+                .unwrap_or_else(|_| {
+                    dirs::home_dir()
+                        .unwrap_or_default()
+                        .join("AppData")
+                        .join("Local")
+                        .to_string_lossy()
+                        .to_string()
+                });
+            let git_dir = std::path::PathBuf::from(&local_app_data)
+                .join("Programs")
+                .join("MinGit");
+
+            emit_log(window, channel, &format!("Extracting MinGit to {} ...", git_dir.display()));
+
+            // Use PowerShell to extract zip (built-in on all modern Windows)
+            let extract_cmd = format!(
+                "Expand-Archive -Force -Path '{}' -DestinationPath '{}'",
+                tmp_str,
+                git_dir.display()
+            );
+            let child = Command::new("powershell")
+                .args(["-NoProfile", "-Command", &extract_cmd])
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .spawn()
+                .map_err(|e| format!("Failed to extract MinGit: {}", e))?;
+
+            stream_child_output(window, channel, child).await?;
+
+            // Add MinGit to current process PATH so subsequent commands find git
+            let git_cmd_dir = git_dir.join("cmd");
+            let current_path = std::env::var("PATH").unwrap_or_default();
+            std::env::set_var("PATH", format!("{};{}", git_cmd_dir.display(), current_path));
+
+            // Verify git works
+            let git_check = Command::new("cmd")
+                .args(["/C", "git", "--version"])
+                .env("PATH", expanded_path())
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .output()
+                .await
+                .map(|o| o.status.success())
+                .unwrap_or(false);
+
+            if !git_check {
+                return Err("Failed to install portable Git. Please install Git manually.".to_string());
+            }
+
+            // Cleanup
+            let _ = tokio::fs::remove_file(&tmp_zip).await;
+            emit_log(window, channel, "Portable Git installed successfully.");
+            Ok(())
+        }
+        "macos" => {
+            // macOS: trigger Xcode CLT install which includes git
+            emit_log(window, channel, "Git not found. Attempting to install via Xcode Command Line Tools...");
+            let child = Command::new("xcode-select")
+                .arg("--install")
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .spawn()
+                .map_err(|e| format!("Failed to trigger Xcode CLT install: {}", e))?;
+
+            // This is async — CLT install shows a system dialog. We just log and continue.
+            let _ = stream_child_output(window, channel, child).await;
+
+            // Check if git is now available (may not be if user hasn't approved the dialog yet)
+            let git_ok = Command::new("git")
+                .arg("--version")
+                .env("PATH", expanded_path())
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .output()
+                .await
+                .map(|o| o.status.success())
+                .unwrap_or(false);
+
+            if git_ok {
+                emit_log(window, channel, "Git installed successfully.");
+                Ok(())
+            } else {
+                Err("Git is not available. Please install Xcode Command Line Tools (run 'xcode-select --install' in Terminal) and try again.".to_string())
+            }
+        }
+        "linux" => {
+            Err("Git is not installed. Please install Git using your package manager (e.g. 'sudo apt install git') and try again.".to_string())
+        }
+        _ => {
+            Err(format!("Git is not available on this platform ({}). Please install Git manually.", os))
+        }
+    }
 }
 
 // Build the Node.js download URL from a mirror base URL.
@@ -296,21 +422,22 @@ fn build_node_download_url(mirror_base: &str) -> String {
 
 #[tauri::command]
 pub async fn install_node(mirror: String, method: String, window: Window) -> Result<(), String> {
-    emit_progress(&window, 0, "Starting Node.js installation...");
+    let ch = "node-install";
+    emit_progress(&window, ch, 0, "Starting Node.js installation...");
 
     let os = std::env::consts::OS;
 
     if method == "nvm" {
         // Install via nvm
-        emit_progress(&window, 5, "Checking prerequisites...");
+        emit_progress(&window, ch, 5, "Checking prerequisites...");
 
         // Check curl is available
         if which::which("curl").is_err() {
             return Err("curl is not installed. Please install curl first.".to_string());
         }
 
-        emit_progress(&window, 10, "Installing nvm...");
-        emit_log(&window, "Installing nvm (Node Version Manager)...");
+        emit_progress(&window, ch, 10, "Installing nvm...");
+        emit_log(&window, ch, "Installing nvm (Node Version Manager)...");
 
         let nvm_install_script = match os {
             "macos" | "linux" => {
@@ -329,8 +456,8 @@ pub async fn install_node(mirror: String, method: String, window: Window) -> Res
             .spawn()
             .map_err(|e| format!("Failed to start nvm install: {}", e))?;
 
-        stream_child_output(&window, child).await?;
-        emit_progress(&window, 50, "nvm installed, installing Node.js LTS...");
+        stream_child_output(&window, ch, child).await?;
+        emit_progress(&window, ch, 50, "nvm installed, installing Node.js LTS...");
 
         // Source nvm and install node LTS using the selected mirror
         let nvm_dir = dirs::home_dir()
@@ -354,16 +481,16 @@ pub async fn install_node(mirror: String, method: String, window: Window) -> Res
             .spawn()
             .map_err(|e| format!("Failed to install Node.js via nvm: {}", e))?;
 
-        stream_child_output(&window, child).await?;
-        emit_progress(&window, 95, "Verifying Node.js...");
-        post_install_verify(&window).await?;
-        emit_progress(&window, 100, "Node.js installed successfully via nvm!");
+        stream_child_output(&window, ch, child).await?;
+        emit_progress(&window, ch, 95, "Verifying Node.js...");
+        post_install_verify(&window, ch).await?;
+        emit_progress(&window, ch, 100, "Node.js installed successfully via nvm!");
     } else {
         // Direct installation with download progress
-        emit_progress(&window, 5, "Preparing direct installation...");
+        emit_progress(&window, ch, 5, "Preparing direct installation...");
 
         let download_url = build_node_download_url(&mirror);
-        emit_log(&window, &format!("Node.js download URL: {}", download_url));
+        emit_log(&window, ch, &format!("Node.js download URL: {}", download_url));
 
         match os {
             "macos" | "linux" => {
@@ -374,9 +501,9 @@ pub async fn install_node(mirror: String, method: String, window: Window) -> Res
                     .to_string();
 
                 // Download with progress (5% - 70%)
-                download_with_progress(&window, &download_url, &tmp_path, 5, 70).await?;
+                download_with_progress(&window, ch, &download_url, &tmp_path, 5, 70).await?;
 
-                emit_progress(&window, 75, "Extracting Node.js...");
+                emit_progress(&window, ch, 75, "Extracting Node.js...");
 
                 // Extract to user-local directory (no sudo needed)
                 let node_dir = dirs::home_dir()
@@ -384,7 +511,7 @@ pub async fn install_node(mirror: String, method: String, window: Window) -> Res
                     .join(".local")
                     .join("node");
 
-                emit_log(&window, &format!("Extracting to {} ...", node_dir.display()));
+                emit_log(&window, ch, &format!("Extracting to {} ...", node_dir.display()));
 
                 // Create target directory
                 tokio::fs::create_dir_all(&node_dir)
@@ -405,10 +532,10 @@ pub async fn install_node(mirror: String, method: String, window: Window) -> Res
                     .spawn()
                     .map_err(|e| format!("Failed to extract Node.js: {}", e))?;
 
-                stream_child_output(&window, child).await?;
+                stream_child_output(&window, ch, child).await?;
 
                 // Configure PATH in shell profile
-                emit_progress(&window, 90, "Configuring PATH...");
+                emit_progress(&window, ch, 90, "Configuring PATH...");
                 let node_bin = node_dir.join("bin");
                 let path_export = format!(
                     "\n# Node.js (installed by OpenClaw)\nexport PATH=\"{}:$PATH\"\n",
@@ -437,6 +564,7 @@ pub async fn install_node(mirror: String, method: String, window: Window) -> Res
                                 .map_err(|e| format!("Failed to update {}: {}", profile_name, e))?;
                             emit_log(
                                 &window,
+                                ch,
                                 &format!("Added Node.js to PATH in {}", profile_name),
                             );
                         }
@@ -447,19 +575,19 @@ pub async fn install_node(mirror: String, method: String, window: Window) -> Res
                 // Cleanup temp file
                 let _ = tokio::fs::remove_file(&tmp_path).await;
 
-                emit_progress(&window, 95, "Verifying Node.js...");
-                post_install_verify(&window).await?;
-                emit_progress(&window, 100, "Node.js installed successfully!");
+                emit_progress(&window, ch, 95, "Verifying Node.js...");
+                post_install_verify(&window, ch).await?;
+                emit_progress(&window, ch, 100, "Node.js installed successfully!");
             }
             "windows" => {
                 let tmp_path = std::env::temp_dir().join("node-installer.msi");
                 let tmp_str = tmp_path.to_string_lossy().to_string();
 
                 // Download with progress (5% - 70%)
-                download_with_progress(&window, &download_url, &tmp_str, 5, 70).await?;
+                download_with_progress(&window, ch, &download_url, &tmp_str, 5, 70).await?;
 
-                emit_progress(&window, 75, "Running Node.js installer...");
-                emit_log(&window, "Running MSI installer (may require admin privileges)...");
+                emit_progress(&window, ch, 75, "Running Node.js installer...");
+                emit_log(&window, ch, "Running MSI installer (may require admin privileges)...");
 
                 let child = cmd("msiexec")
                     .args(["/i", &tmp_str, "/passive", "/norestart"])
@@ -468,7 +596,7 @@ pub async fn install_node(mirror: String, method: String, window: Window) -> Res
                     .spawn()
                     .map_err(|e| format!("Failed to run Node.js installer: {}", e))?;
 
-                if let Err(e) = stream_child_output(&window, child).await {
+                if let Err(e) = stream_child_output(&window, ch, child).await {
                     // MSI failures are often permission-related on Windows
                     let _ = tokio::fs::remove_file(&tmp_path).await;
                     return Err(format!(
@@ -479,9 +607,9 @@ pub async fn install_node(mirror: String, method: String, window: Window) -> Res
 
                 let _ = tokio::fs::remove_file(&tmp_path).await;
 
-                emit_progress(&window, 90, "Verifying Node.js...");
-                post_install_verify(&window).await?;
-                emit_progress(&window, 100, "Node.js installed successfully!");
+                emit_progress(&window, ch, 90, "Verifying Node.js...");
+                post_install_verify(&window, ch).await?;
+                emit_progress(&window, ch, 100, "Node.js installed successfully!");
             }
             _ => return Err(format!("Unsupported OS: {}", os)),
         }
@@ -492,10 +620,29 @@ pub async fn install_node(mirror: String, method: String, window: Window) -> Res
 
 #[tauri::command]
 pub async fn install_openclaw(mirror: String, window: Window) -> Result<InstallResult, String> {
+    let ch = "openclaw-install";
     let registry = mirror.trim_end_matches('/');
 
-    // Pre-flight: ensure npm is available before proceeding
+    // Pre-flight: ensure git is available (some npm packages need it)
     refresh_system_path();
+    let git_ok = cmd("git")
+        .arg("--version")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .output()
+        .await
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+
+    if !git_ok {
+        emit_log(&window, ch, "Git not found. Installing portable Git...");
+        install_portable_git(&window, ch).await?;
+        refresh_system_path();
+    } else {
+        emit_log(&window, ch, "Git detected.");
+    }
+
+    // Pre-flight: ensure npm is available before proceeding
     let npm_check = cmd("npm")
         .arg("--version")
         .stdout(std::process::Stdio::piped())
@@ -506,7 +653,7 @@ pub async fn install_openclaw(mirror: String, window: Window) -> Result<InstallR
     match npm_check {
         Ok(o) if o.status.success() => {
             let v = String::from_utf8_lossy(&o.stdout).trim().to_string();
-            emit_log(&window, &format!("npm {} detected.", v));
+            emit_log(&window, ch, &format!("npm {} detected.", v));
         }
         _ => {
             return Err(
@@ -517,8 +664,8 @@ pub async fn install_openclaw(mirror: String, window: Window) -> Result<InstallR
     }
 
     // Step 1: Configure npm registry
-    emit_progress(&window, 0, "Configuring npm registry...");
-    emit_log(&window, &format!("Setting npm registry to {}", registry));
+    emit_progress(&window, ch, 0, "Configuring npm registry...");
+    emit_log(&window, ch, &format!("Setting npm registry to {}", registry));
 
     let child = cmd("npm")
         .args(["config", "set", "registry", registry])
@@ -527,12 +674,12 @@ pub async fn install_openclaw(mirror: String, window: Window) -> Result<InstallR
         .spawn()
         .map_err(|e| format!("Failed to configure npm registry: {}", e))?;
 
-    stream_child_output(&window, child).await?;
-    emit_progress(&window, 20, "npm registry configured.");
+    stream_child_output(&window, ch, child).await?;
+    emit_progress(&window, ch, 20, "npm registry configured.");
 
     // Step 2: Install openclaw globally
-    emit_progress(&window, 30, "Installing openclaw...");
-    emit_log(&window, "Running: npm install -g openclaw@latest");
+    emit_progress(&window, ch, 30, "Installing openclaw...");
+    emit_log(&window, ch, "Running: npm install -g openclaw@latest");
 
     let child = cmd("npm")
         .args(["install", "-g", "openclaw@latest"])
@@ -542,8 +689,8 @@ pub async fn install_openclaw(mirror: String, window: Window) -> Result<InstallR
         .spawn()
         .map_err(|e| format!("Failed to install openclaw: {}", e))?;
 
-    stream_child_output(&window, child).await?;
-    emit_progress(&window, 100, "OpenClaw installed successfully!");
+    stream_child_output(&window, ch, child).await?;
+    emit_progress(&window, ch, 100, "OpenClaw installed successfully!");
 
     // Step 3: Retrieve installed version
     let version_output = cmd("npm")

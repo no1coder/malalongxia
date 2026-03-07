@@ -37,6 +37,14 @@ export interface LogEntry {
   readonly message: string;
 }
 
+// Result of verifying Node.js and npm availability (from Rust backend)
+export interface NodeVerifyResult {
+  readonly node_available: boolean;
+  readonly npm_available: boolean;
+  readonly node_version: string | null;
+  readonly npm_version: string | null;
+}
+
 // Supported language codes
 export type Language = "zh-CN" | "en-US";
 

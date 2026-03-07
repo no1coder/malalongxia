@@ -48,6 +48,7 @@ pub async fn check_environment(check_id: String) -> Result<CheckResult, String> 
         "os" => Ok(check_os()),
         "node" => Ok(check_node()),
         "npm" => Ok(check_npm()),
+        "git" => Ok(check_git()),
         "network" => check_network().await,
         "disk" => Ok(check_disk()),
         _ => Err(format!("Unknown check id: {}", check_id)),
@@ -116,6 +117,29 @@ fn check_npm() -> CheckResult {
         (None, None) => CheckResult {
             status: "failed".to_string(),
             detail: "Neither npm nor pnpm is installed".to_string(),
+            data: None,
+        },
+    }
+}
+
+// Check if git is installed and return its version.
+fn check_git() -> CheckResult {
+    match run_command_output("git", &["--version"]) {
+        Some(version) => {
+            // git --version returns "git version 2.x.x", extract just the version
+            let ver = version
+                .strip_prefix("git version ")
+                .unwrap_or(&version)
+                .to_string();
+            CheckResult {
+                status: "passed".to_string(),
+                detail: format!("Git {}", ver),
+                data: Some(serde_json::json!({ "version": ver })),
+            }
+        }
+        None => CheckResult {
+            status: "warning".to_string(),
+            detail: "Git is not installed (required by some npm packages)".to_string(),
             data: None,
         },
     }

@@ -72,6 +72,15 @@ pub fn expanded_path() -> String {
 
         // Scoop
         extra.push(home.join("scoop").join("shims"));
+
+        // Git for Windows
+        extra.push(PathBuf::from(r"C:\Program Files\Git\cmd"));
+        extra.push(PathBuf::from(r"C:\Program Files (x86)\Git\cmd"));
+
+        // MinGit (portable git installed by this app)
+        if !local_data.is_empty() {
+            extra.push(PathBuf::from(&local_data).join("Programs").join("MinGit").join("cmd"));
+        }
     }
 
     // Only keep paths that actually exist

@@ -403,7 +403,14 @@ export default function DashboardPage({
             {t("dashboard.viewTutorial")}
           </button>
 
-          <button className="dashboard-btn dashboard-btn-danger" onClick={onReinstall}>
+          <button
+            className="dashboard-btn dashboard-btn-danger"
+            onClick={() => {
+              if (window.confirm(t("dashboard.reinstallConfirm"))) {
+                onReinstall();
+              }
+            }}
+          >
             <RotateCcw size={16} />
             {t("dashboard.reinstall")}
           </button>

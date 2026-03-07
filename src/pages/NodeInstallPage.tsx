@@ -5,16 +5,10 @@ import { listen } from "@tauri-apps/api/event";
 import { useInstallStore } from "../stores/useInstallStore";
 import { useStepNavigation } from "../hooks/useStepNavigation";
 import { useMirrorConfig } from "../hooks/useMirrorConfig";
+import type { NodeVerifyResult } from "../types";
 import { CheckCircle2, AlertTriangle, Loader2 } from "lucide-react";
 import clsx from "clsx";
 import "./NodeInstallPage.css";
-
-interface NodeVerifyResult {
-  readonly node_available: boolean;
-  readonly npm_available: boolean;
-  readonly node_version: string | null;
-  readonly npm_version: string | null;
-}
 
 export default function NodeInstallPage() {
   const { t } = useTranslation();
@@ -44,12 +38,12 @@ export default function NodeInstallPage() {
   useEffect(() => {
     const unlisteners: (() => void)[] = [];
 
-    listen<{ percent: number; message: string }>("install-progress", (event) => {
+    listen<{ percent: number; message: string }>("node-install-progress", (event) => {
       setInstallPercent(event.payload.percent);
       setInstallMessage(event.payload.message);
     }).then((unlisten) => unlisteners.push(unlisten));
 
-    listen<string>("install-log", (event) => {
+    listen<string>("node-install-log", (event) => {
       addNodeInstallLog({
         timestamp: Date.now(),
         level: "info",
@@ -104,6 +98,7 @@ export default function NodeInstallPage() {
 
   const isInstalling = nodeInstallStatus === "installing";
   const isComplete = nodeInstallStatus === "success";
+  const isFailed = nodeInstallStatus === "error";
 
   // Verify node/npm are available, then navigate to next step
   const verifyAndProceed = useCallback(async () => {
@@ -124,19 +119,12 @@ export default function NodeInstallPage() {
     }
   }, [goToStep, t]);
 
-  // "下一步" triggers install if needed, verifies before navigating
+  // "下一步" only verifies and navigates; install is a separate button
   const handleNext = useCallback(async () => {
     if (!nodeRequired || isComplete) {
-      // Even if "not required" or already installed, verify before proceeding
       await verifyAndProceed();
-      return;
     }
-    // Allow retry after error
-    if ((nodeInstallStatus === "idle" || nodeInstallStatus === "error") && selectedMirror) {
-      setNodeInstallStatus("idle");
-      await handleInstall();
-    }
-  }, [nodeRequired, isComplete, nodeInstallStatus, selectedMirror, handleInstall, verifyAndProceed, setNodeInstallStatus]);
+  }, [nodeRequired, isComplete, verifyAndProceed]);
 
   // Scroll to progress area when install starts
   useEffect(() => {
@@ -306,17 +294,35 @@ export default function NodeInstallPage() {
         >
           {t("btn.prev")}
         </button>
+
+        {/* Install / Retry button — only when installation is needed */}
+        {nodeRequired && !isComplete && (
+          <button
+            className={clsx(
+              "nodeinstall-btn nodeinstall-btn-primary",
+              !isInstalling && selectedMirror && "btn-cta-glow"
+            )}
+            disabled={isInstalling || !selectedMirror}
+            onClick={handleInstall}
+          >
+            {isInstalling
+              ? t("nodeInstall.installing")
+              : isFailed
+                ? t("btn.retry")
+                : t("nodeInstall.installBtn")}
+          </button>
+        )}
+
+        {/* Next button — enabled after install success or when node not required */}
         <button
           className={clsx(
             "nodeinstall-btn nodeinstall-btn-primary",
-            !isInstalling && (selectedMirror || !nodeRequired) && "btn-cta-glow"
+            (!nodeRequired || isComplete) && "btn-cta-glow"
           )}
-          disabled={isInstalling || (nodeRequired && !isComplete && !selectedMirror)}
+          disabled={nodeRequired && !isComplete}
           onClick={handleNext}
         >
-          {isInstalling
-            ? t("nodeInstall.installing")
-            : t("btn.next")}
+          {t("btn.next")}
         </button>
       </div>
     </div>
