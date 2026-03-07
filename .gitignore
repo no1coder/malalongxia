@@ -23,6 +23,9 @@ dist-ssr
 *.sln
 *.sw?
 
+# Large binary downloads (deploy separately)
+website/downloads/
+
 # Claude / Agent / Spec workflow
 .agent/
 .agents/

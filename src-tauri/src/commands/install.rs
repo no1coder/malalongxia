@@ -281,21 +281,29 @@ async fn install_portable_git(window: &Window, channel: &str) -> Result<(), Stri
     match os {
         "windows" => {
             let arch = std::env::consts::ARCH;
-            let arch_str = if arch == "aarch64" { "arm64" } else { "64" };
 
-            // Use npmmirror's git-for-windows mirror for reliable China downloads
-            let git_version = "2.47.1";
-            let mingit_version = "2.47.1.windows.1";
-            let url = format!(
-                "https://registry.npmmirror.com/-/binary/git-for-windows/v{}/MinGit-{}-{}-bit.zip",
-                git_version, mingit_version, arch_str
+            // Download MinGit from our own site (primary) with npmmirror fallback
+            let git_version = "2.53.0";
+            let filename = if arch == "aarch64" {
+                format!("MinGit-{}-arm64.zip", git_version)
+            } else {
+                format!("MinGit-{}-64-bit.zip", git_version)
+            };
+            let primary_url = format!("https://malalongxia.com/downloads/{}", filename);
+            let fallback_url = format!(
+                "https://registry.npmmirror.com/-/binary/git-for-windows/v{}.windows.1/{}",
+                git_version, filename
             );
 
             let tmp_zip = std::env::temp_dir().join("mingit.zip");
             let tmp_str = tmp_zip.to_string_lossy().to_string();
 
             emit_progress(window, channel, 2, "Downloading portable Git...");
-            download_with_progress(window, channel, &url, &tmp_str, 2, 8).await?;
+            let download_result = download_with_progress(window, channel, &primary_url, &tmp_str, 2, 8).await;
+            if download_result.is_err() {
+                emit_log(window, channel, "Primary download failed, trying npmmirror fallback...");
+                download_with_progress(window, channel, &fallback_url, &tmp_str, 2, 8).await?;
+            }
 
             // Extract to %LOCALAPPDATA%\Programs\MinGit
             let local_app_data = std::env::var("LOCALAPPDATA")
@@ -354,19 +362,94 @@ async fn install_portable_git(window: &Window, channel: &str) -> Result<(), Stri
             Ok(())
         }
         "macos" => {
-            // macOS: trigger Xcode CLT install which includes git
-            emit_log(window, channel, "Git not found. Attempting to install via Xcode Command Line Tools...");
-            let child = Command::new("xcode-select")
-                .arg("--install")
+            // macOS: download standalone git .pkg installer (~50MB)
+            // Much faster than Xcode Command Line Tools (~1-2GB)
+            emit_log(window, channel, "Git not found. Downloading standalone Git installer...");
+
+            let arch = std::env::consts::ARCH;
+            let git_version = "2.53.0";
+            // Homebrew git bottles hosted on our own site (~22MB each)
+            let filename = if arch == "aarch64" {
+                format!("git-{}-arm64_sonoma.bottle.tar.gz", git_version)
+            } else {
+                format!("git-{}-sonoma.bottle.tar.gz", git_version)
+            };
+            let url = format!("https://malalongxia.com/downloads/{}", filename);
+
+            let tmp_tarball = std::env::temp_dir().join(&filename);
+            let tmp_str = tmp_tarball.to_string_lossy().to_string();
+
+            emit_progress(window, channel, 2, "Downloading Git for macOS...");
+            download_with_progress(window, channel, &url, &tmp_str, 2, 8).await?;
+
+            emit_progress(window, channel, 9, "Installing Git...");
+
+            // Extract Homebrew bottle to ~/.local/git
+            let git_dir = dirs::home_dir()
+                .ok_or("Cannot determine home directory")?
+                .join(".local")
+                .join("git");
+
+            tokio::fs::create_dir_all(&git_dir)
+                .await
+                .map_err(|e| format!("Failed to create git directory: {}", e))?;
+
+            emit_log(window, channel, &format!("Extracting Git to {} ...", git_dir.display()));
+
+            // Homebrew bottles have a nested structure: git/VERSION/bin/git
+            // Extract and flatten with --strip-components=2
+            let child = Command::new("tar")
+                .args([
+                    "-xzf", &tmp_str,
+                    "-C", &git_dir.to_string_lossy().to_string(),
+                    "--strip-components=2",
+                ])
                 .stdout(std::process::Stdio::piped())
                 .stderr(std::process::Stdio::piped())
                 .spawn()
-                .map_err(|e| format!("Failed to trigger Xcode CLT install: {}", e))?;
+                .map_err(|e| format!("Failed to extract Git: {}", e))?;
 
-            // This is async — CLT install shows a system dialog. We just log and continue.
-            let _ = stream_child_output(window, channel, child).await;
+            stream_child_output(window, channel, child).await?;
 
-            // Check if git is now available (may not be if user hasn't approved the dialog yet)
+            // Add git bin to PATH in shell profile
+            let git_bin = git_dir.join("bin");
+            let path_export = format!(
+                "\n# Git (installed by OpenClaw)\nexport PATH=\"{}:$PATH\"\n",
+                git_bin.display()
+            );
+
+            let home = dirs::home_dir().ok_or("Cannot determine home directory")?;
+            let profile_candidates = [".zshrc", ".bashrc", ".profile"];
+            for profile_name in &profile_candidates {
+                let profile_path = home.join(profile_name);
+                if profile_path.exists() {
+                    let content = tokio::fs::read_to_string(&profile_path)
+                        .await
+                        .unwrap_or_default();
+                    if !content.contains(&git_bin.to_string_lossy().to_string()) {
+                        let tmp_profile = profile_path.with_extension("tmp");
+                        let new_content = format!("{}{}", content, path_export);
+                        tokio::fs::write(&tmp_profile, &new_content)
+                            .await
+                            .map_err(|e| format!("Failed to write temp file: {}", e))?;
+                        tokio::fs::rename(&tmp_profile, &profile_path)
+                            .await
+                            .map_err(|e| format!("Failed to update {}: {}", profile_name, e))?;
+                        emit_log(window, channel, &format!("Added Git to PATH in {}", profile_name));
+                    }
+                    break;
+                }
+            }
+
+            // Also add to current process PATH
+            let current_path = std::env::var("PATH").unwrap_or_default();
+            std::env::set_var("PATH", format!("{}:{}", git_bin.display(), current_path));
+
+            // Cleanup temp file
+            let _ = tokio::fs::remove_file(&tmp_tarball).await;
+
+            // Verify git works
+            refresh_system_path();
             let git_ok = Command::new("git")
                 .arg("--version")
                 .env("PATH", expanded_path())
@@ -381,7 +464,17 @@ async fn install_portable_git(window: &Window, channel: &str) -> Result<(), Stri
                 emit_log(window, channel, "Git installed successfully.");
                 Ok(())
             } else {
-                Err("Git is not available. Please install Xcode Command Line Tools (run 'xcode-select --install' in Terminal) and try again.".to_string())
+                // Last resort: try xcode-select --install
+                emit_log(window, channel, "Standalone Git install failed, falling back to Xcode CLT...");
+                let child = Command::new("xcode-select")
+                    .arg("--install")
+                    .stdout(std::process::Stdio::piped())
+                    .stderr(std::process::Stdio::piped())
+                    .spawn()
+                    .map_err(|e| format!("Failed to trigger Xcode CLT install: {}", e))?;
+                let _ = stream_child_output(window, channel, child).await;
+
+                Err("Git installation requires manual approval. Please complete the Xcode Command Line Tools installation dialog and retry.".to_string())
             }
         }
         "linux" => {
@@ -677,19 +770,49 @@ pub async fn install_openclaw(mirror: String, window: Window) -> Result<InstallR
     stream_child_output(&window, ch, child).await?;
     emit_progress(&window, ch, 20, "npm registry configured.");
 
-    // Step 2: Install openclaw globally
+    // Step 2: Install openclaw globally with retry mechanism
     emit_progress(&window, ch, 30, "Installing openclaw...");
-    emit_log(&window, ch, "Running: npm install -g openclaw@latest");
 
-    let child = cmd("npm")
-        .args(["install", "-g", "openclaw@latest"])
-        .env("SHARP_IGNORE_GLOBAL_LIBVIPS", "1")
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("Failed to install openclaw: {}", e))?;
+    let max_retries = 3;
+    let mut last_error = String::new();
+    for attempt in 1..=max_retries {
+        if attempt > 1 {
+            emit_log(&window, ch, &format!("Retry attempt {}/{}...", attempt, max_retries));
+            emit_progress(&window, ch, 30, &format!("Retrying installation ({}/{})...", attempt, max_retries));
+            tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+        }
 
-    stream_child_output(&window, ch, child).await?;
+        emit_log(&window, ch, "Running: npm install -g openclaw@latest");
+
+        let child = cmd("npm")
+            .args(["install", "-g", "openclaw@latest"])
+            .env("SHARP_IGNORE_GLOBAL_LIBVIPS", "1")
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .map_err(|e| format!("Failed to install openclaw: {}", e))?;
+
+        match stream_child_output(&window, ch, child).await {
+            Ok(()) => {
+                last_error.clear();
+                break;
+            }
+            Err(e) => {
+                emit_log(&window, ch, &format!("Install attempt {} failed: {}", attempt, e));
+                last_error = e;
+                // Clear npm cache before retry to avoid corrupted downloads
+                if attempt < max_retries {
+                    emit_log(&window, ch, "Cleaning npm cache before retry...");
+                    let _ = cmd("npm").args(["cache", "clean", "--force"]).output().await;
+                }
+            }
+        }
+    }
+
+    if !last_error.is_empty() {
+        return Err(format!("Failed to install openclaw after {} attempts: {}", max_retries, last_error));
+    }
+
     emit_progress(&window, ch, 100, "OpenClaw installed successfully!");
 
     // Step 3: Retrieve installed version

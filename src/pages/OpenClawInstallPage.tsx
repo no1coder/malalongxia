@@ -20,6 +20,7 @@ export default function OpenClawInstallPage() {
     setOpenclawInstallStatus,
     setOpenclawVersion,
     addOpenclawInstallLog,
+    osType,
   } = useInstallStore();
   const { goToStep } = useStepNavigation();
   const { npmMirrors, isLoading: mirrorsLoading } = useMirrorConfig();
@@ -202,6 +203,16 @@ export default function OpenClawInstallPage() {
               <div className="ocinstall-npm-error-title">{t("openclawInstall.npmNotAvailable")}</div>
               <div className="ocinstall-npm-error-hint">{t("openclawInstall.npmNotAvailableHint")}</div>
             </div>
+          </div>
+        )}
+
+        {/* Windows console window warning */}
+        {osType === "windows" && (
+          <div className="ocinstall-strategy">
+            <AlertTriangle />
+            <span className="ocinstall-strategy-text">
+              {t("openclawInstall.winConsoleWarning")}
+            </span>
           </div>
         )}
 

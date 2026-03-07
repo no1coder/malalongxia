@@ -35,8 +35,9 @@ pub fn expanded_path() -> String {
         // User local bin
         extra.push(home.join(".local/bin"));
 
-        // Direct install location used by this app
+        // Direct install locations used by this app
         extra.push(home.join(".local/node/bin"));
+        extra.push(home.join(".local/git/bin"));
     }
 
     #[cfg(windows)]
