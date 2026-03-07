@@ -12,11 +12,24 @@ pub struct CheckResult {
 }
 
 // Run a command and capture its stdout, returning None on failure.
+// On Windows, wraps through `cmd.exe /C` so `.cmd` scripts (npm.cmd) are found.
 fn run_command_output(cmd: &str, args: &[&str]) -> Option<String> {
-    StdCommand::new(cmd)
+    #[cfg(windows)]
+    let output = {
+        let mut full_args = vec!["/C", cmd];
+        full_args.extend(args);
+        StdCommand::new("cmd")
+            .args(&full_args)
+            .env("PATH", expanded_path())
+            .output()
+    };
+    #[cfg(not(windows))]
+    let output = StdCommand::new(cmd)
         .args(args)
         .env("PATH", expanded_path())
-        .output()
+        .output();
+
+    output
         .ok()
         .filter(|o| o.status.success())
         .and_then(|o| {

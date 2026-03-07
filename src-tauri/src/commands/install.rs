@@ -8,10 +8,22 @@ use super::path_env::{expanded_path, refresh_system_path};
 const NODE_VERSION: &str = "v22.14.0";
 
 // Create a tokio Command with expanded PATH for finding node/npm in packaged apps.
+// On Windows, wraps the call through `cmd.exe /C` so that `.cmd` scripts (like npm.cmd)
+// are resolved automatically—Rust's Command::new won't find .cmd files on its own.
 fn cmd(program: &str) -> Command {
-    let mut c = Command::new(program);
-    c.env("PATH", expanded_path());
-    c
+    #[cfg(windows)]
+    {
+        let mut c = Command::new("cmd");
+        c.args(["/C", program]);
+        c.env("PATH", expanded_path());
+        c
+    }
+    #[cfg(not(windows))]
+    {
+        let mut c = Command::new(program);
+        c.env("PATH", expanded_path());
+        c
+    }
 }
 
 #[derive(Debug, Serialize)]

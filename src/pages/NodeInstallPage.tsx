@@ -36,6 +36,7 @@ export default function NodeInstallPage() {
   const [installPercent, setInstallPercent] = useState(0);
   const [installMessage, setInstallMessage] = useState("");
   const [verifyError, setVerifyError] = useState<string | null>(null);
+  const isWindows = navigator.userAgent.includes("Windows");
   const progressRef = useRef<HTMLDivElement>(null);
   const logsRef = useRef<HTMLDivElement>(null);
 
@@ -188,34 +189,34 @@ export default function NodeInstallPage() {
               <div
                 className={clsx(
                   "nodeinstall-method",
-                  nodeInstallMethod === "nvm" && "selected"
-                )}
-                onClick={() => !isInstalling && setNodeInstallMethod("nvm")}
-              >
-                <div className="nodeinstall-method-name">
-                  nvm
-                  <span className="nodeinstall-method-badge">
-                    {t("nodeInstall.recommended")}
-                  </span>
-                </div>
-                <div className="nodeinstall-method-desc">
-                  {t("nodeInstall.nvmDesc")}
-                </div>
-              </div>
-              <div
-                className={clsx(
-                  "nodeinstall-method",
                   nodeInstallMethod === "direct" && "selected"
                 )}
                 onClick={() => !isInstalling && setNodeInstallMethod("direct")}
               >
                 <div className="nodeinstall-method-name">
                   {t("nodeInstall.directInstall")}
+                  <span className="nodeinstall-method-badge">
+                    {t("nodeInstall.recommended")}
+                  </span>
                 </div>
                 <div className="nodeinstall-method-desc">
                   {t("nodeInstall.directDesc")}
                 </div>
               </div>
+              {!isWindows && (
+                <div
+                  className={clsx(
+                    "nodeinstall-method",
+                    nodeInstallMethod === "nvm" && "selected"
+                  )}
+                  onClick={() => !isInstalling && setNodeInstallMethod("nvm")}
+                >
+                  <div className="nodeinstall-method-name">nvm</div>
+                  <div className="nodeinstall-method-desc">
+                    {t("nodeInstall.nvmDesc")}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Mirror selection */}

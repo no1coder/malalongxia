@@ -5,10 +5,21 @@ use tokio::process::Command;
 use super::path_env::expanded_path;
 
 /// Create a tokio Command with the expanded PATH set.
+/// On Windows, wraps through `cmd.exe /C` so `.cmd` scripts (npm.cmd) are found.
 fn cmd(program: &str) -> Command {
-    let mut c = Command::new(program);
-    c.env("PATH", expanded_path());
-    c
+    #[cfg(windows)]
+    {
+        let mut c = Command::new("cmd");
+        c.args(["/C", program]);
+        c.env("PATH", expanded_path());
+        c
+    }
+    #[cfg(not(windows))]
+    {
+        let mut c = Command::new(program);
+        c.env("PATH", expanded_path());
+        c
+    }
 }
 
 // Resolve the OpenClaw config directory path.

@@ -103,7 +103,7 @@ export const useInstallStore = create<InstallState>((set) => ({
   envCheckComplete: false,
 
   nodeInstallStatus: "idle",
-  nodeInstallMethod: "nvm",
+  nodeInstallMethod: "direct",
   nodeInstallLogs: [],
 
   selectedMirror: null,
