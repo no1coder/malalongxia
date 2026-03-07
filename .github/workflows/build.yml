@@ -18,7 +18,7 @@ jobs:
           - platform: macos-latest
             target: aarch64-apple-darwin
             label: macOS-arm64
-          - platform: macos-13
+          - platform: macos-14
             target: x86_64-apple-darwin
             label: macOS-x64
           - platform: windows-latest
@@ -30,16 +30,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 9
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
+
+      - name: Install pnpm
+        run: corepack enable && corepack prepare pnpm@9 --activate
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
