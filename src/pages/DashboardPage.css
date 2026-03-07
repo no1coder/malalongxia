@@ -290,7 +290,7 @@
 
 .dashboard-btn-primary:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 0 32px rgba(229, 77, 66, 0.5);
+  box-shadow: 0 0 32px rgba(255, 77, 77, 0.5);
 }
 
 .dashboard-btn-primary:active:not(:disabled) {

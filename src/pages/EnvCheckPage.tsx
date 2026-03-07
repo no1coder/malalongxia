@@ -159,8 +159,10 @@ export default function EnvCheckPage() {
   const passedCount = envChecks.filter((c) => c.status === "passed").length;
   const warningCount = envChecks.filter((c) => c.status === "warning").length;
   const failedCount = envChecks.filter((c) => c.status === "failed").length;
+  // node and npm failures are not blocking — next step installs them
+  const NON_BLOCKING_CHECKS = new Set(["network", "node", "npm"]);
   const hasBlockingFailure = envChecks.some(
-    (c) => c.status === "failed" && c.id !== "network"
+    (c) => c.status === "failed" && !NON_BLOCKING_CHECKS.has(c.id)
   );
 
   // Determine summary message

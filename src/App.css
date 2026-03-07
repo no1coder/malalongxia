@@ -47,7 +47,7 @@
 .layout__logo {
   width: 28px;
   height: 28px;
-  filter: drop-shadow(0 0 6px rgba(229, 77, 66, 0.4));
+  filter: drop-shadow(0 0 6px rgba(255, 77, 77, 0.4));
 }
 
 .layout__title {
@@ -170,7 +170,7 @@
 .layout__sidebar {
   width: 220px;
   flex-shrink: 0;
-  background: #111;
+  background: var(--color-bg-secondary);
   border-right: 1px solid var(--color-border);
   padding: var(--spacing-lg) 0;
   overflow-y: auto;
@@ -217,7 +217,7 @@
 }
 
 .btn--primary:hover {
-  background: linear-gradient(135deg, var(--color-primary-hover), #c42e23);
+  background: linear-gradient(135deg, var(--color-primary-hover), #991b1b);
   box-shadow: var(--shadow-glow-primary);
   transform: translateY(-1px);
 }
@@ -310,7 +310,7 @@
   background: var(--color-primary);
   border: 2px solid var(--color-primary);
   color: #fff;
-  box-shadow: 0 0 10px rgba(229, 77, 66, 0.5);
+  box-shadow: 0 0 10px rgba(255, 77, 77, 0.5);
 }
 
 .step-indicator__dot--completed {
@@ -352,12 +352,12 @@
 
 /* Active step row highlight */
 .step-indicator__item:has(.step-indicator__dot--active) {
-  background: rgba(229, 77, 66, 0.15);
+  background: rgba(255, 77, 77, 0.15);
 }
 
 /* ===================== LogViewer ===================== */
 .log-viewer {
-  background: #0d0d0d;
+  background: rgba(5, 8, 16, 0.8);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   padding: var(--spacing-md);
@@ -706,8 +706,8 @@
   justify-content: space-between;
   gap: var(--spacing-md);
   padding: 8px var(--spacing-xl);
-  background: linear-gradient(90deg, rgba(245, 166, 35, 0.15), rgba(229, 77, 66, 0.15));
-  border-bottom: 1px solid rgba(245, 166, 35, 0.3);
+  background: linear-gradient(90deg, rgba(0, 229, 204, 0.15), rgba(255, 77, 77, 0.15));
+  border-bottom: 1px solid rgba(0, 229, 204, 0.3);
   flex-shrink: 0;
   animation: fadeIn 0.3s ease-out;
 }

@@ -2,31 +2,31 @@
  * Global Styles - OpenClaw Dark Theme
  * ============================================================ */
 
-/* ----- CSS Variables ----- */
+/* ----- CSS Variables (OpenClaw official palette) ----- */
 :root {
   /* Background colors */
-  --color-bg: #0a0a0a;
-  --color-bg-secondary: #111111;
-  --color-bg-card: #1a1a1a;
-  --color-bg-card-hover: #222222;
-  --color-bg-elevated: #252525;
+  --color-bg: #050810;
+  --color-bg-secondary: #0a0f1a;
+  --color-bg-card: rgba(10, 15, 26, 0.65);
+  --color-bg-card-hover: rgba(10, 15, 26, 0.8);
+  --color-bg-elevated: #111827;
 
   /* Border colors */
-  --color-border: #333333;
-  --color-border-light: #444444;
+  --color-border: rgba(136, 146, 176, 0.15);
+  --color-border-light: rgba(136, 146, 176, 0.25);
 
   /* Text colors */
-  --color-text: #ffffff;
-  --color-text-secondary: #999999;
-  --color-text-muted: #666666;
+  --color-text: #f0f4ff;
+  --color-text-secondary: #8892b0;
+  --color-text-muted: #5a6480;
 
-  /* Brand colors */
-  --color-primary: #E54D42;
-  --color-primary-hover: #D43D32;
-  --color-primary-light: rgba(229, 77, 66, 0.15);
-  --color-accent: #F5A623;
-  --color-accent-hover: #E09510;
-  --color-accent-light: rgba(245, 166, 35, 0.15);
+  /* Brand colors - OpenClaw coral + cyan */
+  --color-primary: #ff4d4d;
+  --color-primary-hover: #e63946;
+  --color-primary-light: rgba(255, 77, 77, 0.15);
+  --color-accent: #00e5cc;
+  --color-accent-hover: #14b8a6;
+  --color-accent-light: rgba(0, 229, 204, 0.15);
 
   /* Status colors */
   --color-success: #34D399;
@@ -80,8 +80,8 @@
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
   --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
   --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.6);
-  --shadow-glow-primary: 0 0 20px rgba(229, 77, 66, 0.3);
-  --shadow-glow-accent: 0 0 20px rgba(245, 166, 35, 0.3);
+  --shadow-glow-primary: 0 0 20px rgba(255, 77, 77, 0.3);
+  --shadow-glow-accent: 0 0 20px rgba(0, 229, 204, 0.3);
   --shadow-glow-success: 0 0 20px rgba(52, 211, 153, 0.3);
 
   /* Transition durations */
@@ -239,7 +239,7 @@ ul, ol {
 }
 
 .btn-primary:hover {
-  background: linear-gradient(135deg, var(--color-primary-hover), #c42e23);
+  background: linear-gradient(135deg, var(--color-primary-hover), #991b1b);
   box-shadow: var(--shadow-glow-primary);
   transform: translateY(-1px);
 }
@@ -508,10 +508,10 @@ label {
 /* ----- CTA Button Glow Pulse ----- */
 @keyframes btnGlow {
   0%, 100% {
-    box-shadow: 0 0 14px rgba(229, 77, 66, 0.25);
+    box-shadow: 0 0 14px rgba(255, 77, 77, 0.25);
   }
   50% {
-    box-shadow: 0 0 22px rgba(229, 77, 66, 0.4);
+    box-shadow: 0 0 22px rgba(255, 77, 77, 0.4);
   }
 }
 
@@ -550,7 +550,7 @@ label {
 
 .btn-cta-glow:hover {
   animation: btnGlow 2.5s ease-in-out infinite;
-  box-shadow: 0 0 24px rgba(229, 77, 66, 0.45);
+  box-shadow: 0 0 24px rgba(255, 77, 77, 0.45);
   transform: translateY(-1px);
 }
 

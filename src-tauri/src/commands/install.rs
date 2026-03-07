@@ -3,7 +3,16 @@ use tauri::{Emitter, Window};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
 
+use super::path_env::expanded_path;
+
 const NODE_VERSION: &str = "v22.14.0";
+
+// Create a tokio Command with expanded PATH for finding node/npm in packaged apps.
+fn cmd(program: &str) -> Command {
+    let mut c = Command::new(program);
+    c.env("PATH", expanded_path());
+    c
+}
 
 #[derive(Debug, Serialize)]
 pub struct InstallResult {
@@ -198,7 +207,7 @@ pub async fn install_node(mirror: String, method: String, window: Window) -> Res
         };
 
         // Download and run nvm install script
-        let child = Command::new("bash")
+        let child = cmd("bash")
             .arg("-c")
             .arg(format!("curl -fsSL {} | bash", nvm_install_script))
             .stdout(std::process::Stdio::piped())
@@ -222,7 +231,7 @@ pub async fn install_node(mirror: String, method: String, window: Window) -> Res
             nvm_script.display(),
         );
 
-        let child = Command::new("bash")
+        let child = cmd("bash")
             .arg("-c")
             .arg(&install_cmd)
             .env("NVM_NODEJS_ORG_MIRROR", mirror_base)
@@ -267,7 +276,7 @@ pub async fn install_node(mirror: String, method: String, window: Window) -> Res
                     .map_err(|e| format!("Failed to create directory: {}", e))?;
 
                 let tar_flags = if os == "linux" { "-xJf" } else { "-xzf" };
-                let child = Command::new("tar")
+                let child = cmd("tar")
                     .args([
                         tar_flags,
                         &tmp_path,
@@ -331,7 +340,7 @@ pub async fn install_node(mirror: String, method: String, window: Window) -> Res
                 download_with_progress(&window, &download_url, &tmp_str, 5, 70).await?;
 
                 emit_progress(&window, 75, "Running Node.js installer...");
-                let child = Command::new("msiexec")
+                let child = cmd("msiexec")
                     .args(["/i", &tmp_str, "/passive", "/norestart"])
                     .stdout(std::process::Stdio::piped())
                     .stderr(std::process::Stdio::piped())
@@ -358,7 +367,7 @@ pub async fn install_openclaw(mirror: String, window: Window) -> Result<InstallR
     emit_progress(&window, 0, "Configuring npm registry...");
     emit_log(&window, &format!("Setting npm registry to {}", registry));
 
-    let child = Command::new("npm")
+    let child = cmd("npm")
         .args(["config", "set", "registry", registry])
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -372,7 +381,7 @@ pub async fn install_openclaw(mirror: String, window: Window) -> Result<InstallR
     emit_progress(&window, 30, "Installing openclaw...");
     emit_log(&window, "Running: npm install -g openclaw@latest");
 
-    let child = Command::new("npm")
+    let child = cmd("npm")
         .args(["install", "-g", "openclaw@latest"])
         .env("SHARP_IGNORE_GLOBAL_LIBVIPS", "1")
         .stdout(std::process::Stdio::piped())
@@ -384,7 +393,7 @@ pub async fn install_openclaw(mirror: String, window: Window) -> Result<InstallR
     emit_progress(&window, 100, "OpenClaw installed successfully!");
 
     // Step 3: Retrieve installed version
-    let version_output = Command::new("npm")
+    let version_output = cmd("npm")
         .args(["list", "-g", "openclaw", "--depth=0", "--json"])
         .output()
         .await

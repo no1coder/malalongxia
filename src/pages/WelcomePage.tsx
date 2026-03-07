@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { useStepNavigation } from "../hooks/useStepNavigation";
-import { Shell, ArrowRight } from "lucide-react";
+import { ArrowRight } from "lucide-react";
+import appIcon from "../assets/app-icon.png";
 import "./WelcomePage.css";
 
 const APP_VERSION = "0.1.0";
@@ -24,7 +25,7 @@ export default function WelcomePage() {
 
       {/* Logo */}
       <div className="welcome-logo">
-        <Shell />
+        <img src={appIcon} alt="OpenClaw" width={96} height={96} />
       </div>
 
       {/* Title - matches website hero-title style */}

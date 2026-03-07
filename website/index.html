@@ -1,416 +1,760 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-CN">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>麻辣龙虾 - OpenClaw 一键安装助手</title>
-  <meta name="description" content="麻辣龙虾 (MalaLongxia) — 专为中国用户打造的 OpenClaw 一键安装助手，轻松搭建 AI 编程环境。" />
-  <meta name="keywords" content="OpenClaw, AI编程, 一键安装, 麻辣龙虾, MalaLongxia" />
-  <link rel="preconnect" href="https://api.fontshare.com">
-  <link rel="preconnect" href="https://cdn.fontshare.com" crossorigin>
-  <link href="https://api.fontshare.com/v2/css?f[]=clash-display@700,600,500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css" />
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🦞%3C/text%3E%3C/svg%3E" />
-</head>
-<body>
-  <!-- Navigation -->
-  <nav class="nav" id="nav">
-    <div class="nav-inner">
-      <a href="#" class="nav-logo">
-        <span class="nav-logo-icon">🦞</span>
-        <span class="nav-logo-text"><span class="text-mala">麻辣</span><span class="text-longxia">龙虾</span></span>
-        <span class="nav-divider">|</span>
-        <span class="nav-tagline">for <span class="brand-openclaw">OpenClaw</span></span>
-      </a>
-      <div class="nav-links">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>麻辣龙虾 - OpenClaw 一键安装助手</title>
+    <meta
+      name="description"
+      content="麻辣龙虾 (MalaLongxia) — 专为中国用户打造的 OpenClaw 一键安装助手，轻松搭建 AI 编程环境。"
+    />
+    <meta
+      name="keywords"
+      content="OpenClaw, AI编程, 一键安装, 麻辣龙虾, MalaLongxia"
+    />
+    <link rel="preconnect" href="https://api.fontshare.com" />
+    <link rel="preconnect" href="https://cdn.fontshare.com" crossorigin />
+    <link
+      href="https://api.fontshare.com/v2/css?f[]=clash-display@700,600,500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="style.css" />
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🦞%3C/text%3E%3C/svg%3E"
+    />
+  </head>
+  <body>
+    <!-- Navigation -->
+    <nav class="nav" id="nav">
+      <div class="nav-inner">
+        <a href="#" class="nav-logo">
+          <span class="nav-logo-icon">🦞</span>
+          <span class="nav-logo-text"
+            ><span class="text-mala">麻辣</span
+            ><span class="text-longxia">龙虾</span></span
+          >
+          <span class="nav-divider">|</span>
+          <span class="nav-tagline"
+            >for <span class="brand-openclaw">OpenClaw</span></span
+          >
+        </a>
+        <div class="nav-links">
+          <a href="#features">功能</a>
+          <a href="#roadmap">路线图</a>
+          <a href="#tech">技术栈</a>
+          <a href="tips.html">使用技巧</a>
+          <a href="#download" class="nav-cta">下载</a>
+        </div>
+        <button class="nav-menu-btn" id="navMenuBtn" aria-label="Toggle menu">
+          <span></span><span></span><span></span>
+        </button>
+      </div>
+      <!-- Mobile menu -->
+      <div class="nav-mobile" id="navMobile">
         <a href="#features">功能</a>
         <a href="#roadmap">路线图</a>
         <a href="#tech">技术栈</a>
         <a href="tips.html">使用技巧</a>
         <a href="#download" class="nav-cta">下载</a>
       </div>
-      <button class="nav-menu-btn" id="navMenuBtn" aria-label="Toggle menu">
-        <span></span><span></span><span></span>
-      </button>
-    </div>
-    <!-- Mobile menu -->
-    <div class="nav-mobile" id="navMobile">
-      <a href="#features">功能</a>
-      <a href="#roadmap">路线图</a>
-      <a href="#tech">技术栈</a>
-      <a href="tips.html">使用技巧</a>
-      <a href="#download" class="nav-cta">下载</a>
-    </div>
-  </nav>
+    </nav>
 
-  <!-- Hero -->
-  <section class="hero">
-    <div class="hero-bg">
-      <div class="hero-glow hero-glow-1"></div>
-      <div class="hero-glow hero-glow-2"></div>
-      <div class="hero-grid"></div>
-    </div>
-    <div class="hero-content">
-      <div class="hero-badge animate-on-scroll">
-        <span class="hero-badge-dot"></span>
-        v0.1.0 · 开源免费
+    <!-- Hero -->
+    <section class="hero">
+      <div class="hero-bg">
+        <div class="hero-glow hero-glow-1"></div>
+        <div class="hero-glow hero-glow-2"></div>
+        <div class="hero-grid"></div>
       </div>
-      <h1 class="hero-title animate-on-scroll">
-        <span class="hero-title-icon">🦞</span>
-        <span><span class="text-mala">麻辣</span><span class="text-longxia">龙虾</span></span>
-      </h1>
-      <p class="hero-subtitle animate-on-scroll">
-        <span class="brand-openclaw">OpenClaw</span> 一键安装助手<br/>专为中国用户优化
-      </p>
-      <p class="hero-desc animate-on-scroll">
-        告别繁琐的环境配置，一键搞定 Node.js 安装、镜像加速、<span class="brand-openclaw">OpenClaw</span> 部署和 AI API 配置。<br/>
-        让 AI 编程触手可及。
-      </p>
-      <div class="hero-actions animate-on-scroll">
-        <a href="#download" class="btn btn-primary btn-lg">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          免费下载
-        </a>
-        <a href="https://github.com" target="_blank" rel="noopener" class="btn btn-secondary btn-lg">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
-          GitHub
-        </a>
-      </div>
-      <div class="hero-platforms animate-on-scroll">
-        <span class="hero-platform">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20.94c1.5 0 2.75 1.06 4 1.06 3 0 6-8 6-12.22A4.91 4.91 0 0 0 17 5c-2.22 0-4 1.44-5 2-1-.56-2.78-2-5-2a4.9 4.9 0 0 0-5 4.78C2 14 5 22 8 22c1.25 0 2.5-1.06 4-1.06Z"/><path d="M10 2c1 .5 2 2 2 5"/></svg>
-          macOS
-        </span>
-        <span class="hero-platform">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-          Windows
-        </span>
-        <span class="hero-platform">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"/></svg>
-          Linux
-        </span>
-      </div>
-    </div>
-    <!-- Hero screenshot mockup -->
-    <div class="hero-mockup animate-on-scroll">
-      <div class="mockup-window">
-        <div class="mockup-titlebar">
-          <span class="mockup-dot mockup-dot-red"></span>
-          <span class="mockup-dot mockup-dot-yellow"></span>
-          <span class="mockup-dot mockup-dot-green"></span>
-          <span class="mockup-title">麻辣龙虾</span>
+      <div class="hero-content">
+        <div class="hero-badge animate-on-scroll">
+          <span class="hero-badge-dot"></span>
+          v0.1.0 · 开源免费
         </div>
-        <div class="mockup-body">
-          <div class="mockup-sidebar">
-            <div class="mockup-step mockup-step-done">
-              <div class="mockup-step-num">1</div>
-              <span>欢迎</span>
-            </div>
-            <div class="mockup-step mockup-step-active">
-              <div class="mockup-step-num">2</div>
-              <span>环境检测</span>
-            </div>
-            <div class="mockup-step">
-              <div class="mockup-step-num">3</div>
-              <span>Node.js</span>
-            </div>
-            <div class="mockup-step">
-              <div class="mockup-step-num">4</div>
-              <span>OpenClaw</span>
-            </div>
-            <div class="mockup-step">
-              <div class="mockup-step-num">5</div>
-              <span>API 配置</span>
-            </div>
-          </div>
-          <div class="mockup-main">
-            <h3>环境检测</h3>
-            <div class="mockup-check mockup-check-pass">
-              <span class="mockup-check-icon">&#10003;</span>
-              <span>操作系统检测</span>
-              <span class="mockup-check-tag pass">通过</span>
-            </div>
-            <div class="mockup-check mockup-check-pass">
-              <span class="mockup-check-icon">&#10003;</span>
-              <span>Node.js v22.1.0</span>
-              <span class="mockup-check-tag pass">通过</span>
-            </div>
-            <div class="mockup-check mockup-check-loading">
-              <span class="mockup-check-spinner"></span>
-              <span>网络连通性检测</span>
-              <span class="mockup-check-tag loading">检测中</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- Features -->
-  <section class="features" id="features">
-    <div class="container">
-      <div class="section-header animate-on-scroll">
-        <span class="section-tag">核心功能</span>
-        <h2>让安装变得简单</h2>
-        <p>智能检测、镜像加速、一键部署，为中国用户量身打造</p>
-      </div>
-      <div class="features-grid">
-        <div class="feature-card animate-on-scroll">
-          <div class="feature-icon feature-icon-red">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-          </div>
-          <h3>一键安装</h3>
-          <p>向导式安装流程，从环境检测到部署完成，全程自动化，无需手动输入任何命令。</p>
-        </div>
-        <div class="feature-card animate-on-scroll">
-          <div class="feature-icon feature-icon-orange">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-          </div>
-          <h3>环境智能检测</h3>
-          <p>自动检测操作系统、Node.js 版本和网络状况，智能判断安装路径，跳过已满足的依赖。</p>
-        </div>
-        <div class="feature-card animate-on-scroll">
-          <div class="feature-icon feature-icon-green">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-          </div>
-          <h3>国内镜像加速</h3>
-          <p>内置阿里云、腾讯云、清华大学等国内镜像源，一键测速自动选择最快节点，告别龟速下载。</p>
-        </div>
-        <div class="feature-card animate-on-scroll">
-          <div class="feature-icon feature-icon-blue">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a4 4 0 0 0-4 4v2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2h-2V6a4 4 0 0 0-4-4z"/><circle cx="12" cy="15" r="1"/></svg>
-          </div>
-          <h3>AI API 配置</h3>
-          <p>支持多家 AI 供应商，可视化配置 API Key 和自定义端点，一键测试连接确保配置正确。</p>
-        </div>
-        <div class="feature-card animate-on-scroll">
-          <div class="feature-icon feature-icon-purple">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 1-9 9m9-9a9 9 0 0 0-9-9m9 9H3m9 9a9 9 0 0 1-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9"/></svg>
-          </div>
-          <h3>中英双语</h3>
-          <p>完整的中英文国际化支持，默认中文界面，一键切换英文，方便国际团队协作使用。</p>
-        </div>
-        <div class="feature-card animate-on-scroll">
-          <div class="feature-icon feature-icon-cyan">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-          </div>
-          <h3>实时日志</h3>
-          <p>安装过程全程可视化，实时展示详细日志和进度条，遇到问题可一键导出日志排查。</p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- How it works -->
-  <section class="how-it-works">
-    <div class="container">
-      <div class="section-header animate-on-scroll">
-        <span class="section-tag">使用流程</span>
-        <h2>三步开始 AI 编程</h2>
-        <p>下载、安装、开始使用，就是这么简单</p>
-      </div>
-      <div class="steps-row">
-        <div class="step-card animate-on-scroll">
-          <div class="step-number">1</div>
-          <h3>下载应用</h3>
-          <p>根据你的操作系统下载对应的安装包，支持 macOS、Windows 和 Linux。</p>
-        </div>
-        <div class="step-connector animate-on-scroll">
-          <svg width="40" height="2" viewBox="0 0 40 2"><line x1="0" y1="1" x2="40" y2="1" stroke="#333" stroke-width="2" stroke-dasharray="4 4"/></svg>
-        </div>
-        <div class="step-card animate-on-scroll">
-          <div class="step-number">2</div>
-          <h3>运行向导</h3>
-          <p>打开麻辣龙虾，按照安装向导一步步完成环境配置和 <span class="brand-openclaw">OpenClaw</span> 部署。</p>
-        </div>
-        <div class="step-connector animate-on-scroll">
-          <svg width="40" height="2" viewBox="0 0 40 2"><line x1="0" y1="1" x2="40" y2="1" stroke="#333" stroke-width="2" stroke-dasharray="4 4"/></svg>
-        </div>
-        <div class="step-card animate-on-scroll">
-          <div class="step-number">3</div>
-          <h3>开始编程</h3>
-          <p>安装完成后即可使用 <span class="brand-openclaw">OpenClaw</span> 进行 AI 辅助编程，提升开发效率。</p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- Roadmap -->
-  <section class="roadmap" id="roadmap">
-    <div class="container">
-      <div class="section-header animate-on-scroll">
-        <span class="section-tag">版本路线</span>
-        <h2>持续进化</h2>
-        <p>从安装向导到完整桌面客户端，一步步为你构建最佳 AI 编程体验</p>
-      </div>
-      <div class="roadmap-timeline">
-        <div class="roadmap-item animate-on-scroll">
-          <div class="roadmap-marker roadmap-marker-active"></div>
-          <div class="roadmap-card">
-            <span class="roadmap-version">v1.0</span>
-            <span class="roadmap-status roadmap-status-current">当前版本</span>
-            <h3>安装向导</h3>
-            <ul>
-              <li>环境检测（OS / Node.js / 网络）</li>
-              <li>Node.js 自动安装 + 镜像加速</li>
-              <li>OpenClaw 一键部署</li>
-              <li>AI API 可视化配置</li>
-            </ul>
-          </div>
-        </div>
-        <div class="roadmap-item animate-on-scroll">
-          <div class="roadmap-marker"></div>
-          <div class="roadmap-card">
-            <span class="roadmap-version">v2.0</span>
-            <span class="roadmap-status">规划中</span>
-            <h3>管理工具</h3>
-            <ul>
-              <li>配置管理面板</li>
-              <li>一键重置 / 重启</li>
-              <li>系统诊断与修复</li>
-              <li>自动更新</li>
-            </ul>
-          </div>
-        </div>
-        <div class="roadmap-item animate-on-scroll">
-          <div class="roadmap-marker"></div>
-          <div class="roadmap-card">
-            <span class="roadmap-version">v3.0</span>
-            <span class="roadmap-status">远期规划</span>
-            <h3>桌面客户端</h3>
-            <ul>
-              <li>内置 AI 对话界面</li>
-              <li>完整 OpenClaw 管理</li>
-              <li>多模型切换</li>
-              <li>插件生态系统</li>
-            </ul>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- Tech Stack -->
-  <section class="tech" id="tech">
-    <div class="container">
-      <div class="section-header animate-on-scroll">
-        <span class="section-tag">技术栈</span>
-        <h2>现代技术，极致体验</h2>
-        <p>基于 Tauri 2 构建，兼具原生性能与 Web 灵活性</p>
-      </div>
-      <div class="tech-grid">
-        <div class="tech-card animate-on-scroll">
-          <div class="tech-card-icon">🦀</div>
-          <h4>Tauri 2 + Rust</h4>
-          <p>原生性能后端，安全高效，安装包体积小于 10MB</p>
-        </div>
-        <div class="tech-card animate-on-scroll">
-          <div class="tech-card-icon">⚛️</div>
-          <h4>React 19</h4>
-          <p>最新 React 框架，Concurrent Features 带来丝滑交互</p>
-        </div>
-        <div class="tech-card animate-on-scroll">
-          <div class="tech-card-icon">🔷</div>
-          <h4>TypeScript</h4>
-          <p>全面类型安全，严格模式确保代码质量</p>
-        </div>
-        <div class="tech-card animate-on-scroll">
-          <div class="tech-card-icon">⚡</div>
-          <h4>Vite</h4>
-          <p>闪电般的开发体验，毫秒级热更新</p>
-        </div>
-        <div class="tech-card animate-on-scroll">
-          <div class="tech-card-icon">🐻</div>
-          <h4>Zustand</h4>
-          <p>轻量状态管理，简洁直观的 API</p>
-        </div>
-        <div class="tech-card animate-on-scroll">
-          <div class="tech-card-icon">🌍</div>
-          <h4>i18next</h4>
-          <p>国际化框架，中英双语无缝切换</p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- Download / CTA -->
-  <section class="download" id="download">
-    <div class="container">
-      <div class="download-card animate-on-scroll">
-        <div class="download-glow"></div>
-        <h2>立即开始</h2>
-        <p>下载麻辣龙虾，一键部署 <span class="brand-openclaw">OpenClaw</span> AI 编程环境</p>
-        <div class="download-buttons">
-          <a href="https://github.com/malalongxia/releases/download/v0.1.0/MalaLongxia_0.1.0_aarch64.dmg" class="btn btn-primary btn-lg download-btn" data-download>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20.94c1.5 0 2.75 1.06 4 1.06 3 0 6-8 6-12.22A4.91 4.91 0 0 0 17 5c-2.22 0-4 1.44-5 2-1-.56-2.78-2-5-2a4.9 4.9 0 0 0-5 4.78C2 14 5 22 8 22c1.25 0 2.5-1.06 4-1.06Z"/><path d="M10 2c1 .5 2 2 2 5"/></svg>
-            macOS 下载
-          </a>
-          <a href="https://github.com/malalongxia/releases/download/v0.1.0/MalaLongxia_0.1.0_x64-setup.exe" class="btn btn-primary btn-lg download-btn" data-download>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-            Windows 下载
-          </a>
-          <a href="https://github.com/malalongxia/releases/download/v0.1.0/MalaLongxia_0.1.0_amd64.AppImage" class="btn btn-secondary btn-lg download-btn" data-download>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"/></svg>
-            Linux 下载
+        <h1 class="hero-title animate-on-scroll">
+          <span class="hero-title-icon">🦞</span>
+          <span
+            ><span class="text-mala">麻辣</span
+            ><span class="text-longxia">龙虾</span></span
+          >
+        </h1>
+        <p class="hero-subtitle animate-on-scroll">
+          <span class="brand-openclaw">OpenClaw</span>
+          一键安装助手<br />专为中国用户优化
+        </p>
+        <p class="hero-desc animate-on-scroll">
+          告别繁琐的环境配置，一键搞定 Node.js 安装、镜像加速、<span
+            class="brand-openclaw"
+            >OpenClaw</span
+          >
+          部署和 AI API 配置。<br />
+          让 AI 编程触手可及。
+        </p>
+        <div class="hero-actions animate-on-scroll">
+          <a href="#download" class="btn btn-primary btn-lg">
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
+            免费下载
           </a>
         </div>
-        <p class="download-note">v0.1.0 · 开源免费 · 安装包 &lt; 10MB</p>
-      </div>
-    </div>
-  </section>
-
-  <!-- OpenClaw Tips CTA -->
-  <section class="contact" id="contact">
-    <div class="container">
-      <div class="section-header animate-on-scroll">
-        <span class="section-tag">Pro Tips</span>
-        <h2><span class="brand-openclaw">OpenClaw</span> 使用技巧</h2>
-        <p>添加作者微信，获取独家使用技巧、疑难解答和版本更新通知</p>
-      </div>
-      <div class="contact-wechat animate-on-scroll">
-        <a href="tips.html" class="btn btn-primary btn-lg" style="font-size: 16px;">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-          查看详情 &amp; 添加微信
-        </a>
-      </div>
-    </div>
-  </section>
-
-  <!-- Footer -->
-  <footer class="footer">
-    <div class="container">
-      <div class="footer-inner">
-        <div class="footer-brand">
-          <span class="footer-logo">🦞 <span class="text-mala">麻辣</span><span class="text-longxia">龙虾</span></span>
-          <p><span class="brand-openclaw">OpenClaw</span> 一键安装助手</p>
-        </div>
-        <div class="footer-links">
-          <div class="footer-col">
-            <h4>产品</h4>
-            <a href="#features">功能介绍</a>
-            <a href="#roadmap">版本路线</a>
-            <a href="#download">下载</a>
-          </div>
-          <div class="footer-col">
-            <h4>资源</h4>
-            <a href="#">使用文档</a>
-            <a href="#">常见问题</a>
-            <a href="#">更新日志</a>
-          </div>
-          <div class="footer-col">
-            <h4>社区</h4>
-            <a href="#">GitHub</a>
-            <a href="#">反馈建议</a>
-            <a href="tips.html">使用技巧</a>
-          </div>
+        <div class="hero-platforms animate-on-scroll">
+          <span class="hero-platform">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path
+                d="M12 20.94c1.5 0 2.75 1.06 4 1.06 3 0 6-8 6-12.22A4.91 4.91 0 0 0 17 5c-2.22 0-4 1.44-5 2-1-.56-2.78-2-5-2a4.9 4.9 0 0 0-5 4.78C2 14 5 22 8 22c1.25 0 2.5-1.06 4-1.06Z"
+              />
+              <path d="M10 2c1 .5 2 2 2 5" />
+            </svg>
+            macOS
+          </span>
+          <span class="hero-platform">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <rect x="2" y="3" width="20" height="14" rx="2" />
+              <line x1="8" y1="21" x2="16" y2="21" />
+              <line x1="12" y1="17" x2="12" y2="21" />
+            </svg>
+            Windows
+          </span>
+          <span class="hero-platform">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="4" />
+              <path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8" />
+            </svg>
+            Linux
+          </span>
         </div>
       </div>
-      <div class="footer-bottom">
-        <p>&copy; 2026 麻辣龙虾 (MalaLongxia). 开源项目，使用 MIT 许可证。</p>
+      <!-- Hero screenshot mockup -->
+      <div class="hero-mockup animate-on-scroll">
+        <div class="mockup-window">
+          <div class="mockup-titlebar">
+            <span class="mockup-dot mockup-dot-red"></span>
+            <span class="mockup-dot mockup-dot-yellow"></span>
+            <span class="mockup-dot mockup-dot-green"></span>
+            <span class="mockup-title">麻辣龙虾</span>
+          </div>
+          <div class="mockup-body">
+            <div class="mockup-sidebar">
+              <div class="mockup-step mockup-step-done">
+                <div class="mockup-step-num">1</div>
+                <span>欢迎</span>
+              </div>
+              <div class="mockup-step mockup-step-active">
+                <div class="mockup-step-num">2</div>
+                <span>环境检测</span>
+              </div>
+              <div class="mockup-step">
+                <div class="mockup-step-num">3</div>
+                <span>Node.js</span>
+              </div>
+              <div class="mockup-step">
+                <div class="mockup-step-num">4</div>
+                <span>OpenClaw</span>
+              </div>
+              <div class="mockup-step">
+                <div class="mockup-step-num">5</div>
+                <span>API 配置</span>
+              </div>
+            </div>
+            <div class="mockup-main">
+              <h3>环境检测</h3>
+              <div class="mockup-check mockup-check-pass">
+                <span class="mockup-check-icon">&#10003;</span>
+                <span>操作系统检测</span>
+                <span class="mockup-check-tag pass">通过</span>
+              </div>
+              <div class="mockup-check mockup-check-pass">
+                <span class="mockup-check-icon">&#10003;</span>
+                <span>Node.js v22.1.0</span>
+                <span class="mockup-check-tag pass">通过</span>
+              </div>
+              <div class="mockup-check mockup-check-loading">
+                <span class="mockup-check-spinner"></span>
+                <span>网络连通性检测</span>
+                <span class="mockup-check-tag loading">检测中</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Features -->
+    <section class="features" id="features">
+      <div class="container">
+        <div class="section-header animate-on-scroll">
+          <span class="section-tag">核心功能</span>
+          <h2>让安装变得简单</h2>
+          <p>智能检测、镜像加速、一键部署，为中国用户量身打造</p>
+        </div>
+        <div class="features-grid">
+          <div class="feature-card animate-on-scroll">
+            <div class="feature-icon feature-icon-red">
+              <svg
+                width="28"
+                height="28"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+              </svg>
+            </div>
+            <h3>一键安装</h3>
+            <p>
+              向导式安装流程，从环境检测到部署完成，全程自动化，无需手动输入任何命令。
+            </p>
+          </div>
+          <div class="feature-card animate-on-scroll">
+            <div class="feature-icon feature-icon-orange">
+              <svg
+                width="28"
+                height="28"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <rect x="2" y="3" width="20" height="14" rx="2" />
+                <line x1="8" y1="21" x2="16" y2="21" />
+                <line x1="12" y1="17" x2="12" y2="21" />
+              </svg>
+            </div>
+            <h3>环境智能检测</h3>
+            <p>
+              自动检测操作系统、Node.js
+              版本和网络状况，智能判断安装路径，跳过已满足的依赖。
+            </p>
+          </div>
+          <div class="feature-card animate-on-scroll">
+            <div class="feature-icon feature-icon-green">
+              <svg
+                width="28"
+                height="28"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+              </svg>
+            </div>
+            <h3>国内镜像加速</h3>
+            <p>
+              内置阿里云、腾讯云、清华大学等国内镜像源，一键测速自动选择最快节点，告别龟速下载。
+            </p>
+          </div>
+          <div class="feature-card animate-on-scroll">
+            <div class="feature-icon feature-icon-blue">
+              <svg
+                width="28"
+                height="28"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path
+                  d="M12 2a4 4 0 0 0-4 4v2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2h-2V6a4 4 0 0 0-4-4z"
+                />
+                <circle cx="12" cy="15" r="1" />
+              </svg>
+            </div>
+            <h3>AI API 配置</h3>
+            <p>
+              支持多家 AI 供应商，可视化配置 API Key
+              和自定义端点，一键测试连接确保配置正确。
+            </p>
+          </div>
+          <div class="feature-card animate-on-scroll">
+            <div class="feature-icon feature-icon-purple">
+              <svg
+                width="28"
+                height="28"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path
+                  d="M21 12a9 9 0 0 1-9 9m9-9a9 9 0 0 0-9-9m9 9H3m9 9a9 9 0 0 1-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9"
+                />
+              </svg>
+            </div>
+            <h3>中英双语</h3>
+            <p>
+              完整的中英文国际化支持，默认中文界面，一键切换英文，方便国际团队协作使用。
+            </p>
+          </div>
+          <div class="feature-card animate-on-scroll">
+            <div class="feature-icon feature-icon-cyan">
+              <svg
+                width="28"
+                height="28"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path
+                  d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"
+                />
+                <polyline points="14 2 14 8 20 8" />
+                <line x1="16" y1="13" x2="8" y2="13" />
+                <line x1="16" y1="17" x2="8" y2="17" />
+              </svg>
+            </div>
+            <h3>实时日志</h3>
+            <p>
+              安装过程全程可视化，实时展示详细日志和进度条，遇到问题可一键导出日志排查。
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- How it works -->
+    <section class="how-it-works">
+      <div class="container">
+        <div class="section-header animate-on-scroll">
+          <span class="section-tag">使用流程</span>
+          <h2>三步开始 AI 编程</h2>
+          <p>下载、安装、开始使用，就是这么简单</p>
+        </div>
+        <div class="steps-row">
+          <div class="step-card animate-on-scroll">
+            <div class="step-number">1</div>
+            <h3>下载应用</h3>
+            <p>
+              根据你的操作系统下载对应的安装包，支持 macOS、Windows 和 Linux。
+            </p>
+          </div>
+          <div class="step-connector animate-on-scroll">
+            <svg width="40" height="2" viewBox="0 0 40 2">
+              <line
+                x1="0"
+                y1="1"
+                x2="40"
+                y2="1"
+                stroke="#333"
+                stroke-width="2"
+                stroke-dasharray="4 4"
+              />
+            </svg>
+          </div>
+          <div class="step-card animate-on-scroll">
+            <div class="step-number">2</div>
+            <h3>运行向导</h3>
+            <p>
+              打开麻辣龙虾，按照安装向导一步步完成环境配置和
+              <span class="brand-openclaw">OpenClaw</span> 部署。
+            </p>
+          </div>
+          <div class="step-connector animate-on-scroll">
+            <svg width="40" height="2" viewBox="0 0 40 2">
+              <line
+                x1="0"
+                y1="1"
+                x2="40"
+                y2="1"
+                stroke="#333"
+                stroke-width="2"
+                stroke-dasharray="4 4"
+              />
+            </svg>
+          </div>
+          <div class="step-card animate-on-scroll">
+            <div class="step-number">3</div>
+            <h3>开始编程</h3>
+            <p>
+              安装完成后即可使用
+              <span class="brand-openclaw">OpenClaw</span> 进行 AI
+              辅助编程，提升开发效率。
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Roadmap -->
+    <section class="roadmap" id="roadmap">
+      <div class="container">
+        <div class="section-header animate-on-scroll">
+          <span class="section-tag">版本路线</span>
+          <h2>持续进化</h2>
+          <p>从安装向导到完整桌面客户端，一步步为你构建最佳 AI 编程体验</p>
+        </div>
+        <div class="roadmap-timeline">
+          <div class="roadmap-item animate-on-scroll">
+            <div class="roadmap-marker roadmap-marker-active"></div>
+            <div class="roadmap-card">
+              <span class="roadmap-version">v1.0</span>
+              <span class="roadmap-status roadmap-status-current"
+                >当前版本</span
+              >
+              <h3>安装向导</h3>
+              <ul>
+                <li>环境检测（OS / Node.js / 网络）</li>
+                <li>Node.js 自动安装 + 镜像加速</li>
+                <li>OpenClaw 一键部署</li>
+                <li>AI API 可视化配置</li>
+              </ul>
+            </div>
+          </div>
+          <div class="roadmap-item animate-on-scroll">
+            <div class="roadmap-marker"></div>
+            <div class="roadmap-card">
+              <span class="roadmap-version">v2.0</span>
+              <span class="roadmap-status">规划中</span>
+              <h3>管理工具</h3>
+              <ul>
+                <li>配置管理面板</li>
+                <li>一键重置 / 重启</li>
+                <li>系统诊断与修复</li>
+                <li>自动更新</li>
+              </ul>
+            </div>
+          </div>
+          <div class="roadmap-item animate-on-scroll">
+            <div class="roadmap-marker"></div>
+            <div class="roadmap-card">
+              <span class="roadmap-version">v3.0</span>
+              <span class="roadmap-status">远期规划</span>
+              <h3>桌面客户端</h3>
+              <ul>
+                <li>内置 AI 对话界面</li>
+                <li>完整 OpenClaw 管理</li>
+                <li>多模型切换</li>
+                <li>插件生态系统</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tech Stack -->
+    <section class="tech" id="tech">
+      <div class="container">
+        <div class="section-header animate-on-scroll">
+          <span class="section-tag">技术栈</span>
+          <h2>现代技术，极致体验</h2>
+          <p>基于 Tauri 2 构建，兼具原生性能与 Web 灵活性</p>
+        </div>
+        <div class="tech-grid">
+          <div class="tech-card animate-on-scroll">
+            <div class="tech-card-icon">🦀</div>
+            <h4>Tauri 2 + Rust</h4>
+            <p>原生性能后端，安全高效，安装包体积小于 10MB</p>
+          </div>
+          <div class="tech-card animate-on-scroll">
+            <div class="tech-card-icon">⚛️</div>
+            <h4>React 19</h4>
+            <p>最新 React 框架，Concurrent Features 带来丝滑交互</p>
+          </div>
+          <div class="tech-card animate-on-scroll">
+            <div class="tech-card-icon">🔷</div>
+            <h4>TypeScript</h4>
+            <p>全面类型安全，严格模式确保代码质量</p>
+          </div>
+          <div class="tech-card animate-on-scroll">
+            <div class="tech-card-icon">⚡</div>
+            <h4>Vite</h4>
+            <p>闪电般的开发体验，毫秒级热更新</p>
+          </div>
+          <div class="tech-card animate-on-scroll">
+            <div class="tech-card-icon">🐻</div>
+            <h4>Zustand</h4>
+            <p>轻量状态管理，简洁直观的 API</p>
+          </div>
+          <div class="tech-card animate-on-scroll">
+            <div class="tech-card-icon">🌍</div>
+            <h4>i18next</h4>
+            <p>国际化框架，中英双语无缝切换</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Download / CTA -->
+    <section class="download" id="download">
+      <div class="container">
+        <div class="download-card animate-on-scroll">
+          <div class="download-glow"></div>
+          <h2>立即开始</h2>
+          <p>
+            下载麻辣龙虾，一键部署
+            <span class="brand-openclaw">OpenClaw</span> AI 编程环境
+          </p>
+          <div class="download-buttons">
+            <button
+              class="btn btn-primary btn-lg download-btn"
+              id="macDownloadBtn"
+            >
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path
+                  d="M12 20.94c1.5 0 2.75 1.06 4 1.06 3 0 6-8 6-12.22A4.91 4.91 0 0 0 17 5c-2.22 0-4 1.44-5 2-1-.56-2.78-2-5-2a4.9 4.9 0 0 0-5 4.78C2 14 5 22 8 22c1.25 0 2.5-1.06 4-1.06Z"
+                />
+                <path d="M10 2c1 .5 2 2 2 5" />
+              </svg>
+              macOS 下载
+            </button>
+            <a
+              href="https://github.com/malalongxia/releases/download/v0.1.0/MalaLongxia_0.1.0_x64-setup.exe"
+              class="btn btn-primary btn-lg download-btn"
+              data-download
+            >
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <rect x="2" y="3" width="20" height="14" rx="2" />
+                <line x1="8" y1="21" x2="16" y2="21" />
+                <line x1="12" y1="17" x2="12" y2="21" />
+              </svg>
+              Windows 下载
+            </a>
+            <a
+              href="https://github.com/malalongxia/releases/download/v0.1.0/MalaLongxia_0.1.0_amd64.AppImage"
+              class="btn btn-secondary btn-lg download-btn"
+              data-download
+            >
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <circle cx="12" cy="12" r="4" />
+                <path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8" />
+              </svg>
+              Linux 下载
+            </a>
+          </div>
+          <p class="download-note">
+            <a href="tips.html" class="download-tips-link"
+              >获取 <span class="brand-openclaw">OpenClaw</span> 使用技巧 →</a
+            >
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- OpenClaw Tips CTA -->
+    <section class="contact" id="contact">
+      <div class="container">
+        <div class="section-header animate-on-scroll">
+          <span class="section-tag">Pro Tips</span>
+          <h2><span class="brand-openclaw">OpenClaw</span> 使用技巧</h2>
+          <p>添加作者微信，获取独家使用技巧、疑难解答和版本更新通知</p>
+        </div>
+        <div class="contact-wechat animate-on-scroll">
+          <a
+            href="tips.html"
+            class="btn btn-primary btn-lg"
+            style="font-size: 16px"
+          >
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path
+                d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"
+              />
+            </svg>
+            查看详情 &amp; 添加微信
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <div class="container">
+        <div class="footer-inner">
+          <div class="footer-brand">
+            <span class="footer-logo"
+              >🦞 <span class="text-mala">麻辣</span
+              ><span class="text-longxia">龙虾</span></span
+            >
+            <p><span class="brand-openclaw">OpenClaw</span> 一键安装助手</p>
+          </div>
+          <div class="footer-links">
+            <div class="footer-col">
+              <h4>产品</h4>
+              <a href="#features">功能介绍</a>
+              <a href="#roadmap">版本路线</a>
+              <a href="#download">下载</a>
+            </div>
+            <div class="footer-col">
+              <h4>资源</h4>
+              <a href="#">使用文档</a>
+              <a href="#">常见问题</a>
+              <a href="#">更新日志</a>
+            </div>
+            <div class="footer-col">
+              <h4>社区</h4>
+              <a href="#">反馈建议</a>
+              <a href="tips.html">使用技巧</a>
+            </div>
+          </div>
+        </div>
+        <div class="footer-bottom">
+          <p>&copy; 2026 麻辣龙虾 (MalaLongxia). 开源项目，使用 MIT 许可证。</p>
+        </div>
+      </div>
+    </footer>
+
+    <!-- macOS Download Modal -->
+    <div class="modal-overlay" id="macModal">
+      <div class="modal-card">
+        <button class="modal-close" id="macModalClose" aria-label="Close">
+          &times;
+        </button>
+        <h3 class="modal-title">选择 macOS 版本</h3>
+        <div class="modal-options">
+          <a
+            href="https://github.com/malalongxia/releases/download/v0.1.0/MalaLongxia_0.1.0_aarch64.dmg"
+            class="modal-option"
+            data-download
+          >
+            <div class="modal-option-icon">
+              <svg
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path
+                  d="M12 20.94c1.5 0 2.75 1.06 4 1.06 3 0 6-8 6-12.22A4.91 4.91 0 0 0 17 5c-2.22 0-4 1.44-5 2-1-.56-2.78-2-5-2a4.9 4.9 0 0 0-5 4.78C2 14 5 22 8 22c1.25 0 2.5-1.06 4-1.06Z"
+                />
+                <path d="M10 2c1 .5 2 2 2 5" />
+              </svg>
+            </div>
+            <div>
+              <span class="modal-option-title">Apple Silicon</span>
+              <span class="modal-option-desc">M系列/芯片</span>
+            </div>
+          </a>
+          <a
+            href="https://github.com/malalongxia/releases/download/v0.1.0/MalaLongxia_0.1.0_x64.dmg"
+            class="modal-option"
+            data-download
+          >
+            <div class="modal-option-icon">
+              <svg
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <rect x="2" y="3" width="20" height="14" rx="2" />
+                <line x1="8" y1="21" x2="16" y2="21" />
+                <line x1="12" y1="17" x2="12" y2="21" />
+              </svg>
+            </div>
+            <div>
+              <span class="modal-option-title">Intel</span>
+              <span class="modal-option-desc">x86_64 芯片</span>
+            </div>
+          </a>
+        </div>
+        <div class="modal-hint">
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="#FBBF24"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path
+              d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"
+            />
+            <line x1="12" y1="9" x2="12" y2="13" />
+            <line x1="12" y1="17" x2="12.01" y2="17" />
+          </svg>
+          <div>
+            <p>安装后如遇「无法打开」提示，请在终端执行：</p>
+            <code>sudo xattr -cr /Applications/MalaLongxia.app</code>
+          </div>
+        </div>
       </div>
     </div>
-  </footer>
 
-  <script src="main.js"></script>
-</body>
+    <script src="main.js"></script>
+  </body>
 </html>

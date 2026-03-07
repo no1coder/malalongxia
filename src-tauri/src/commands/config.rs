@@ -2,6 +2,15 @@ use std::path::PathBuf;
 use std::process::Command as StdCommand;
 use tokio::process::Command;
 
+use super::path_env::expanded_path;
+
+/// Create a tokio Command with the expanded PATH set.
+fn cmd(program: &str) -> Command {
+    let mut c = Command::new(program);
+    c.env("PATH", expanded_path());
+    c
+}
+
 // Resolve the OpenClaw config directory path.
 fn openclaw_config_dir() -> Result<PathBuf, String> {
     let home = dirs::home_dir().ok_or("Cannot determine home directory")?;
@@ -64,7 +73,7 @@ pub async fn check_openclaw_status() -> Result<OpenClawStatus, String> {
 
     let current_version_fut = async {
         if !installed { return None; }
-        let output = Command::new("npm")
+        let output = cmd("npm")
             .args(["list", "-g", "openclaw", "--depth=0", "--json"])
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
@@ -81,7 +90,7 @@ pub async fn check_openclaw_status() -> Result<OpenClawStatus, String> {
     };
 
     let latest_version_fut = async {
-        let output = Command::new("npm")
+        let output = cmd("npm")
             .args(["view", "openclaw", "version"])
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
@@ -124,7 +133,7 @@ pub async fn update_openclaw() -> Result<String, String> {
     which::which("openclaw").map_err(|_| "openclaw is not installed or not in PATH".to_string())?;
 
     // Use `openclaw update` as the official update mechanism
-    let output = Command::new("openclaw")
+    let output = cmd("openclaw")
         .args(["update"])
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -135,7 +144,7 @@ pub async fn update_openclaw() -> Result<String, String> {
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         // Fallback to npm if `openclaw update` fails
-        let npm_output = Command::new("npm")
+        let npm_output = cmd("npm")
             .args(["install", "-g", "openclaw@latest"])
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
@@ -150,7 +159,7 @@ pub async fn update_openclaw() -> Result<String, String> {
     }
 
     // Get new version
-    let ver_output = Command::new("openclaw")
+    let ver_output = cmd("openclaw")
         .args(["--version"])
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -374,7 +383,7 @@ pub async fn configure_api(
     }
 
     let args_ref: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-    let onboard_output = Command::new("openclaw")
+    let onboard_output = cmd("openclaw")
         .args(&args_ref)
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -405,7 +414,7 @@ pub async fn configure_api(
             format!("{}/{}", provider, model)
         };
 
-        let _ = Command::new("openclaw")
+        let _ = cmd("openclaw")
             .args(["config", "set", "agents.defaults.model.primary", &model_id])
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
@@ -526,13 +535,13 @@ async fn is_gateway_running() -> bool {
 // Fixes common issues: missing gateway.mode config, stale LaunchAgent paths.
 async fn ensure_gateway_config() {
     // Run config set in parallel with uninstall (they are independent)
-    let config_fut = Command::new("openclaw")
+    let config_fut = cmd("openclaw")
         .args(["config", "set", "gateway.mode", "local"])
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .output();
 
-    let uninstall_fut = Command::new("openclaw")
+    let uninstall_fut = cmd("openclaw")
         .args(["gateway", "uninstall"])
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
@@ -541,7 +550,7 @@ async fn ensure_gateway_config() {
     let _ = tokio::join!(config_fut, uninstall_fut);
 
     // Reinstall depends on uninstall completing first
-    let _ = Command::new("openclaw")
+    let _ = cmd("openclaw")
         .args(["gateway", "install"])
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
@@ -564,7 +573,7 @@ pub async fn launch_openclaw() -> Result<String, String> {
     ensure_gateway_config().await;
 
     // Try service mode first: `openclaw gateway start`
-    let service_result = Command::new("openclaw")
+    let service_result = cmd("openclaw")
         .args(["gateway", "start"])
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -578,7 +587,7 @@ pub async fn launch_openclaw() -> Result<String, String> {
 
     // Fallback to foreground mode if service mode fails
     if !used_service {
-        Command::new("openclaw")
+        cmd("openclaw")
             .args(["gateway", "run", "--port", &OPENCLAW_PORT.to_string()])
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
@@ -598,7 +607,7 @@ pub async fn launch_openclaw() -> Result<String, String> {
 
     if !ready {
         // Collect diagnostic info for the error message
-        let doctor_output = Command::new("openclaw")
+        let doctor_output = cmd("openclaw")
             .args(["doctor"])
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
@@ -640,7 +649,7 @@ pub async fn launch_openclaw() -> Result<String, String> {
 pub async fn stop_openclaw_gateway() -> Result<String, String> {
     which::which("openclaw").map_err(|_| "openclaw is not installed or not in PATH".to_string())?;
 
-    let output = Command::new("openclaw")
+    let output = cmd("openclaw")
         .args(["gateway", "stop"])
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -667,7 +676,7 @@ pub async fn restart_openclaw_gateway() -> Result<String, String> {
     ensure_gateway_config().await;
 
     // Try service restart first
-    let output = Command::new("openclaw")
+    let output = cmd("openclaw")
         .args(["gateway", "restart"])
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -695,7 +704,7 @@ pub async fn restart_openclaw_gateway() -> Result<String, String> {
 pub async fn openclaw_doctor() -> Result<String, String> {
     which::which("openclaw").map_err(|_| "openclaw is not installed or not in PATH".to_string())?;
 
-    let output = Command::new("openclaw")
+    let output = cmd("openclaw")
         .args(["doctor"])
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -712,7 +721,7 @@ pub async fn openclaw_doctor() -> Result<String, String> {
 pub async fn openclaw_health() -> Result<String, String> {
     which::which("openclaw").map_err(|_| "openclaw is not installed or not in PATH".to_string())?;
 
-    let output = Command::new("openclaw")
+    let output = cmd("openclaw")
         .args(["health", "--json"])
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -748,7 +757,7 @@ pub async fn repair_openclaw() -> Result<String, String> {
     let mut steps: Vec<String> = Vec::new();
 
     // Step 1: Ensure gateway.mode is set
-    let mode_result = Command::new("openclaw")
+    let mode_result = cmd("openclaw")
         .args(["config", "set", "gateway.mode", "local"])
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -760,7 +769,7 @@ pub async fn repair_openclaw() -> Result<String, String> {
     }
 
     // Step 2: Stop existing service (ignore errors)
-    let _ = Command::new("openclaw")
+    let _ = cmd("openclaw")
         .args(["gateway", "stop"])
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
@@ -769,7 +778,7 @@ pub async fn repair_openclaw() -> Result<String, String> {
     steps.push("[OK] Stopped existing service".to_string());
 
     // Step 3: Uninstall stale service
-    let uninstall_result = Command::new("openclaw")
+    let uninstall_result = cmd("openclaw")
         .args(["gateway", "uninstall"])
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -781,7 +790,7 @@ pub async fn repair_openclaw() -> Result<String, String> {
     }
 
     // Step 4: Reinstall service with current paths
-    let install_result = Command::new("openclaw")
+    let install_result = cmd("openclaw")
         .args(["gateway", "install"])
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -862,7 +871,7 @@ fn chrono_timestamp() -> String {
 pub async fn check_feishu_plugin() -> Result<bool, String> {
     which::which("openclaw").map_err(|_| "openclaw is not installed or not in PATH".to_string())?;
 
-    let output = Command::new("openclaw")
+    let output = cmd("openclaw")
         .args(["plugins", "list"])
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -879,7 +888,7 @@ pub async fn check_feishu_plugin() -> Result<bool, String> {
 pub async fn install_feishu_plugin() -> Result<String, String> {
     which::which("openclaw").map_err(|_| "openclaw is not installed or not in PATH".to_string())?;
 
-    let output = Command::new("openclaw")
+    let output = cmd("openclaw")
         .args(["plugins", "install", "@openclaw/feishu"])
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -905,13 +914,13 @@ pub async fn configure_feishu(
     which::which("openclaw").map_err(|_| "openclaw is not installed or not in PATH".to_string())?;
 
     // Set Feishu config via openclaw config set
-    let id_result = Command::new("openclaw")
+    let id_result = cmd("openclaw")
         .args(["config", "set", "channels.feishu.appId", &app_id])
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .output();
 
-    let secret_result = Command::new("openclaw")
+    let secret_result = cmd("openclaw")
         .args(["config", "set", "channels.feishu.appSecret", &app_secret])
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -932,7 +941,7 @@ pub async fn configure_feishu(
 #[tauri::command]
 pub async fn reset_installation() -> Result<(), String> {
     // Step 1: Uninstall openclaw globally
-    let child = Command::new("npm")
+    let child = cmd("npm")
         .args(["uninstall", "-g", "openclaw"])
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -957,7 +966,7 @@ pub async fn reset_installation() -> Result<(), String> {
     }
 
     // Step 3: Reset npm registry to default
-    let child = Command::new("npm")
+    let child = cmd("npm")
         .args(["config", "delete", "registry"])
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())

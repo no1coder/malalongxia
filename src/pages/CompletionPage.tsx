@@ -21,7 +21,7 @@ const BENEFITS = [
   { icon: Sparkles, color: "rgba(96, 165, 250, 0.15)", stroke: "#60A5FA", titleKey: "completion.benefitSkill", descKey: "completion.benefitSkillDesc" },
   { icon: Wrench, color: "rgba(52, 211, 153, 0.15)", stroke: "#34D399", titleKey: "completion.benefitSupport", descKey: "completion.benefitSupportDesc" },
   { icon: Users, color: "rgba(251, 191, 36, 0.15)", stroke: "#FBBF24", titleKey: "completion.benefitCommunity", descKey: "completion.benefitCommunityDesc" },
-  { icon: Bell, color: "rgba(229, 77, 66, 0.15)", stroke: "#E54D42", titleKey: "completion.benefitBeta", descKey: "completion.benefitBetaDesc" },
+  { icon: Bell, color: "rgba(255, 77, 77, 0.15)", stroke: "#ff4d4d", titleKey: "completion.benefitBeta", descKey: "completion.benefitBetaDesc" },
 ] as const;
 
 export default function CompletionPage() {

@@ -2,7 +2,7 @@ import { type ReactNode, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Languages, CircleHelp, ExternalLink } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import logoSvg from "../assets/logo.svg";
+import appIcon from "../assets/app-icon.png";
 import { StepIndicator, type StepInfo } from "./StepIndicator";
 
 interface LayoutProps {
@@ -45,7 +45,7 @@ export function Layout({
           tabIndex={0}
           onKeyDown={(e) => { if (e.key === "Enter") openUrl("https://malalongxia.com"); }}
         >
-          <img className="layout__logo" src={logoSvg} alt="OpenClaw" />
+          <img className="layout__logo" src={appIcon} alt="OpenClaw" />
           <h1 className="layout__title">OpenClaw</h1>
         </div>
 

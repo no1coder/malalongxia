@@ -79,6 +79,28 @@
     });
   }
 
+  // ----- macOS download modal -----
+  function initMacModal() {
+    const btn = document.getElementById('macDownloadBtn');
+    const modal = document.getElementById('macModal');
+    const closeBtn = document.getElementById('macModalClose');
+    if (!btn || !modal) return;
+
+    btn.addEventListener('click', () => {
+      modal.classList.add('open');
+    });
+
+    closeBtn?.addEventListener('click', () => {
+      modal.classList.remove('open');
+    });
+
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        modal.classList.remove('open');
+      }
+    });
+  }
+
   // ----- Download then redirect to tips -----
   function initDownloadRedirect() {
     document.querySelectorAll('[data-download]').forEach((link) => {
@@ -98,6 +120,7 @@
     initMobileMenu();
     initSmoothScroll();
     initScrollAnimations();
+    initMacModal();
     initDownloadRedirect();
   });
 })();

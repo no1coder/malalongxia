@@ -46,7 +46,7 @@
   background: var(--color-accent);
   bottom: -100px;
   right: -100px;
-  opacity: 0.1;
+  opacity: 0.15;
 }
 
 .welcome-grid {
@@ -63,22 +63,17 @@
 .welcome-logo {
   position: relative;
   z-index: 1;
-  width: 88px;
-  height: 88px;
-  border-radius: var(--radius-xl);
-  background: linear-gradient(135deg, var(--color-primary), var(--color-primary-hover));
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: var(--shadow-glow-primary);
+  width: 96px;
+  height: 96px;
   margin-bottom: var(--spacing-lg);
   animation: float 3s ease-in-out infinite;
 }
 
-.welcome-logo svg {
-  width: 44px;
-  height: 44px;
-  color: var(--color-text);
+.welcome-logo img {
+  width: 100%;
+  height: 100%;
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-glow-primary);
 }
 
 /* ----- Title (website hero-title style) ----- */
@@ -105,7 +100,7 @@
   transform: translateX(-50%);
   width: 120px;
   height: 3px;
-  background: linear-gradient(90deg, transparent, #E54D42, #F5A623, transparent);
+  background: linear-gradient(90deg, transparent, #ff4d4d, #00e5cc, transparent);
   border-radius: 2px;
   opacity: 0.7;
 }
@@ -117,23 +112,23 @@
 
 /* Brand text gradient - website text-mala / text-longxia */
 .text-mala {
-  background: linear-gradient(135deg, #FF6B5A 0%, #E54D42 40%, #FF8A80 60%, #E54D42 100%);
+  background: linear-gradient(135deg, #ff6b5a 0%, #ff4d4d 40%, #ff8a80 60%, #ff4d4d 100%);
   background-size: 200% 100%;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
   animation: textShimmer 3s ease-in-out infinite;
-  filter: drop-shadow(0 0 24px rgba(229, 77, 66, 0.6)) drop-shadow(0 2px 4px rgba(229, 77, 66, 0.3));
+  filter: drop-shadow(0 0 24px rgba(255, 77, 77, 0.6)) drop-shadow(0 2px 4px rgba(255, 77, 77, 0.3));
 }
 
 .text-longxia {
-  background: linear-gradient(135deg, #FFB020 0%, #FFD700 35%, #FFF1A8 50%, #FFD700 65%, #FFB020 100%);
+  background: linear-gradient(135deg, #00e5cc 0%, #14b8a6 35%, #5eead4 50%, #14b8a6 65%, #00e5cc 100%);
   background-size: 200% 100%;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
   animation: textShimmer 3s ease-in-out infinite 0.5s;
-  filter: drop-shadow(0 0 28px rgba(255, 215, 0, 0.7)) drop-shadow(0 2px 4px rgba(245, 166, 35, 0.4));
+  filter: drop-shadow(0 0 28px rgba(0, 229, 204, 0.6)) drop-shadow(0 2px 4px rgba(0, 229, 204, 0.3));
 }
 
 @keyframes textShimmer {
@@ -171,7 +166,7 @@
 
 .welcome-start-btn:hover {
   transform: translateY(-2px);
-  box-shadow: 0 0 32px rgba(229, 77, 66, 0.5);
+  box-shadow: 0 0 32px rgba(255, 77, 77, 0.5);
 }
 
 .welcome-start-btn:active {

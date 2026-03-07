@@ -267,6 +267,6 @@
 }
 
 .feishu-btn-return:hover {
-  box-shadow: 0 0 24px rgba(229, 77, 66, 0.4);
+  box-shadow: 0 0 24px rgba(255, 77, 77, 0.4);
   transform: translateY(-1px);
 }

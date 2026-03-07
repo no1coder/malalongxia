@@ -2,6 +2,8 @@ use serde::Serialize;
 use std::process::Command as StdCommand;
 use sysinfo::Disks;
 
+use super::path_env::expanded_path;
+
 #[derive(Debug, Serialize)]
 pub struct CheckResult {
     pub status: String,
@@ -13,6 +15,7 @@ pub struct CheckResult {
 fn run_command_output(cmd: &str, args: &[&str]) -> Option<String> {
     StdCommand::new(cmd)
         .args(args)
+        .env("PATH", expanded_path())
         .output()
         .ok()
         .filter(|o| o.status.success())
