@@ -132,6 +132,32 @@
   font-weight: var(--font-weight-semibold);
   color: var(--color-text);
   margin: 0 0 var(--spacing-sm);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.nodeinstall-speedtest-btn {
+  font-size: var(--font-size-xs);
+  padding: 4px 12px;
+  background: var(--color-bg-card);
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-normal);
+  font-family: var(--font-family);
+}
+
+.nodeinstall-speedtest-btn:hover:not(:disabled) {
+  background: var(--color-bg-card-hover);
+  color: var(--color-text);
+  border-color: var(--color-border-light);
+}
+
+.nodeinstall-speedtest-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .nodeinstall-mirror-list {
@@ -197,9 +223,24 @@
   color: var(--color-text);
 }
 
+.nodeinstall-mirror-badge {
+  font-size: var(--font-size-xs);
+  padding: 2px 8px;
+  background: var(--color-success-light);
+  color: var(--color-success);
+  border-radius: var(--radius-full);
+  font-weight: var(--font-weight-medium);
+  flex-shrink: 0;
+}
+
+.nodeinstall-mirror.fastest {
+  border-color: rgba(52, 211, 153, 0.4);
+}
+
 .nodeinstall-mirror-latency {
   font-size: var(--font-size-xs);
   color: var(--color-text-muted);
+  flex-shrink: 0;
 }
 
 /* ----- Progress Area ----- */

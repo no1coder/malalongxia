@@ -30,9 +30,65 @@ export default function NodeInstallPage() {
   const [installPercent, setInstallPercent] = useState(0);
   const [installMessage, setInstallMessage] = useState("");
   const [verifyError, setVerifyError] = useState<string | null>(null);
+  const [mirrorLatencies, setMirrorLatencies] = useState<Record<string, number | null>>({});
+  const [isTesting, setIsTesting] = useState(false);
   const isWindows = navigator.userAgent.includes("Windows");
   const progressRef = useRef<HTMLDivElement>(null);
   const logsRef = useRef<HTMLDivElement>(null);
+
+  // Test latency for all node mirrors in parallel
+  const testMirrorSpeed = useCallback(async () => {
+    if (nodeMirrors.length === 0) return;
+    setIsTesting(true);
+
+    const entries = await Promise.allSettled(
+      nodeMirrors.map(async (mirror) => {
+        try {
+          const latency = await invoke<number>("test_mirror_latency", { url: mirror.url });
+          return { url: mirror.url, latency };
+        } catch {
+          return { url: mirror.url, latency: null as number | null };
+        }
+      })
+    );
+
+    const results: Record<string, number | null> = {};
+    for (const entry of entries) {
+      if (entry.status === "fulfilled") {
+        results[entry.value.url] = entry.value.latency;
+      }
+    }
+
+    setMirrorLatencies(results);
+
+    // Auto-select fastest available mirror
+    const fastest = Object.entries(results)
+      .filter(([, lat]) => lat != null)
+      .sort(([, a], [, b]) => (a ?? Infinity) - (b ?? Infinity))[0];
+
+    if (fastest) {
+      const fastestMirror = nodeMirrors.find((m) => m.url === fastest[0]) ?? null;
+      setSelectedMirror(fastestMirror);
+    }
+
+    setIsTesting(false);
+  }, [nodeMirrors, setSelectedMirror]);
+
+  // Auto-test speed once mirrors are loaded, default select first mirror
+  useEffect(() => {
+    if (mirrorsLoading || nodeMirrors.length === 0 || !nodeRequired) return;
+    if (!selectedMirror) {
+      setSelectedMirror(nodeMirrors[0]);
+    }
+    testMirrorSpeed();
+    // Only run when mirrors become available
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mirrorsLoading]);
+
+  // Find the fastest mirror url
+  const fastestUrl = Object.entries(mirrorLatencies)
+    .filter(([, lat]) => lat != null)
+    .sort(([, a], [, b]) => (a ?? Infinity) - (b ?? Infinity))[0]?.[0];
 
   // Listen for install progress and log events from backend
   useEffect(() => {
@@ -209,7 +265,16 @@ export default function NodeInstallPage() {
 
             {/* Mirror selection */}
             <div className="nodeinstall-mirror-section">
-              <h3>{t("nodeInstall.mirrorSelect")}</h3>
+              <h3>
+                {t("nodeInstall.mirrorSelect")}
+                <button
+                  className="nodeinstall-speedtest-btn"
+                  onClick={testMirrorSpeed}
+                  disabled={isTesting || isInstalling}
+                >
+                  {isTesting ? t("mirror.testing") : t("mirror.testSpeed")}
+                </button>
+              </h3>
               {mirrorsLoading ? (
                 <div className="nodeinstall-mirrors-loading">
                   <Loader2 className="spin" size={16} />
@@ -217,26 +282,38 @@ export default function NodeInstallPage() {
                 </div>
               ) : (
                 <div className="nodeinstall-mirror-list">
-                  {nodeMirrors.map((mirror) => (
-                    <div
-                      key={mirror.url}
-                      className={clsx(
-                        "nodeinstall-mirror",
-                        selectedMirror?.url === mirror.url && "selected"
-                      )}
-                      onClick={() => !isInstalling && setSelectedMirror(mirror)}
-                    >
-                      <div className="nodeinstall-mirror-radio" />
-                      <span className="nodeinstall-mirror-name">
-                        {t(mirror.name)}
-                      </span>
-                      <span className="nodeinstall-mirror-latency">
-                        {mirror.latency != null
-                          ? `${mirror.latency}ms`
-                          : t("mirror.untested")}
-                      </span>
-                    </div>
-                  ))}
+                  {nodeMirrors.map((mirror) => {
+                    const latency = mirrorLatencies[mirror.url];
+                    const isFastest = mirror.url === fastestUrl && fastestUrl != null;
+                    return (
+                      <div
+                        key={mirror.url}
+                        className={clsx(
+                          "nodeinstall-mirror",
+                          selectedMirror?.url === mirror.url && "selected",
+                          isFastest && "fastest"
+                        )}
+                        onClick={() => !isInstalling && setSelectedMirror(mirror)}
+                      >
+                        <div className="nodeinstall-mirror-radio" />
+                        <span className="nodeinstall-mirror-name">
+                          {t(mirror.name)}
+                        </span>
+                        {isFastest && (
+                          <span className="nodeinstall-mirror-badge">
+                            {t("openclawInstall.fastest")}
+                          </span>
+                        )}
+                        <span className="nodeinstall-mirror-latency">
+                          {latency != null
+                            ? `${latency}ms`
+                            : latency === null && Object.keys(mirrorLatencies).length > 0
+                              ? t("openclawInstall.timeout")
+                              : t("mirror.untested")}
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
