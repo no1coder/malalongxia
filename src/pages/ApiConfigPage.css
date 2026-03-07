@@ -1,0 +1,404 @@
+/* ============================================================
+ * ApiConfigPage Styles
+ * Provider card grid (2-col), form fields, selected highlight
+ * ============================================================ */
+
+.apiconfig-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: var(--spacing-lg) var(--spacing-lg);
+  animation: fadeIn var(--transition-slow) ease;
+  overflow: hidden;
+}
+
+/* ----- Header ----- */
+.apiconfig-header {
+  text-align: center;
+  margin-bottom: var(--spacing-xl);
+}
+
+.apiconfig-header h1 {
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-bold);
+  margin: 0;
+  color: var(--color-text);
+}
+
+.apiconfig-header p {
+  color: var(--color-text-muted);
+  margin: var(--spacing-sm) 0 0;
+  font-size: var(--font-size-base);
+}
+
+.apiconfig-content {
+  flex: 1;
+  max-width: 640px;
+  width: 100%;
+  margin: 0 auto;
+  overflow-y: auto;
+  padding-bottom: var(--spacing-md);
+}
+
+/* ----- Provider Cards Grid (2 columns) ----- */
+.apiconfig-providers {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-lg);
+}
+
+.apiconfig-provider {
+  padding: var(--spacing-md);
+  background: var(--color-bg-card);
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: all var(--transition-normal);
+  text-align: left;
+  position: relative;
+  overflow: hidden;
+}
+
+.apiconfig-provider::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: transparent;
+  transition: background var(--transition-normal);
+}
+
+.apiconfig-provider:hover {
+  background: var(--color-bg-card-hover);
+  border-color: var(--color-border-light);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.apiconfig-provider.selected {
+  border-color: var(--color-primary);
+  background: var(--color-primary-light);
+  box-shadow: var(--shadow-glow-primary);
+}
+
+.apiconfig-provider.selected::before {
+  background: linear-gradient(90deg, var(--color-primary), var(--color-accent));
+}
+
+.apiconfig-provider-top {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-xs);
+}
+
+.apiconfig-provider-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.04);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all var(--transition-normal);
+}
+
+.apiconfig-provider-icon svg {
+  width: 18px;
+  height: 18px;
+  color: var(--color-text-secondary);
+}
+
+.apiconfig-provider.selected .apiconfig-provider-icon {
+  background: var(--color-primary);
+}
+
+.apiconfig-provider.selected .apiconfig-provider-icon svg {
+  color: var(--color-text);
+}
+
+.apiconfig-provider-name {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text);
+  flex: 1;
+}
+
+.apiconfig-provider-badges {
+  display: flex;
+  gap: var(--spacing-xs);
+}
+
+.apiconfig-badge {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: var(--radius-full);
+  font-weight: var(--font-weight-medium);
+}
+
+.apiconfig-badge.recommended {
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+}
+
+.apiconfig-provider.selected .apiconfig-badge.recommended {
+  background: var(--color-primary);
+  color: var(--color-text);
+}
+
+.apiconfig-badge.proxy {
+  background: var(--color-accent-light);
+  color: var(--color-accent);
+}
+
+.apiconfig-provider-desc {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  line-height: var(--line-height-normal);
+}
+
+.apiconfig-provider-getkey {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  margin-top: var(--spacing-xs);
+  transition: color var(--transition-fast);
+  text-decoration: none;
+}
+
+.apiconfig-provider-getkey:hover {
+  color: var(--color-primary);
+}
+
+/* ----- Configuration Form ----- */
+.apiconfig-form {
+  padding: var(--spacing-lg);
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  margin-bottom: var(--spacing-lg);
+  animation: slideUp var(--transition-slow) ease forwards;
+}
+
+.apiconfig-form h3 {
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text);
+  margin: 0 0 var(--spacing-md);
+  padding-bottom: var(--spacing-sm);
+  border-bottom: 1px solid var(--color-border);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.apiconfig-form h3 svg {
+  color: var(--color-primary);
+}
+
+.apiconfig-field {
+  margin-bottom: var(--spacing-md);
+}
+
+.apiconfig-field:last-child {
+  margin-bottom: 0;
+}
+
+.apiconfig-field-hint {
+  display: block;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  margin-top: 4px;
+}
+
+.apiconfig-label {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-secondary);
+  margin-bottom: var(--spacing-xs);
+}
+
+.apiconfig-required {
+  color: var(--color-primary);
+  font-size: var(--font-size-xs);
+}
+
+.apiconfig-input {
+  width: 100%;
+  padding: 10px 14px;
+  font-size: var(--font-size-base);
+  color: var(--color-text);
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  outline: none;
+  transition: all var(--transition-fast);
+  font-family: var(--font-family);
+  box-sizing: border-box;
+}
+
+.apiconfig-input:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-light);
+}
+
+.apiconfig-input::placeholder {
+  color: var(--color-text-muted);
+}
+
+.apiconfig-input.mono {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  letter-spacing: 0.5px;
+}
+
+.apiconfig-hint {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  margin-top: var(--spacing-xs);
+  line-height: var(--line-height-normal);
+}
+
+/* ----- Test Connection ----- */
+.apiconfig-form-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-md);
+}
+
+.apiconfig-test-btn {
+  padding: 8px 16px;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  font-family: var(--font-family);
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-normal);
+  background: linear-gradient(135deg, var(--color-primary), var(--color-primary-hover));
+  color: var(--color-text);
+}
+
+.apiconfig-test-btn:hover {
+  box-shadow: var(--shadow-glow-primary);
+  transform: translateY(-1px);
+}
+
+.apiconfig-test-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.apiconfig-test-result {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  font-size: var(--font-size-sm);
+  padding: var(--spacing-xs) 0;
+}
+
+.apiconfig-test-result.success {
+  color: var(--color-success);
+}
+
+.apiconfig-test-result.error {
+  color: var(--color-error);
+}
+
+.apiconfig-test-result.testing {
+  color: var(--color-info);
+}
+
+.apiconfig-test-result.testing svg {
+  animation: spin 1s linear infinite;
+}
+
+/* ----- Skip Link ----- */
+.apiconfig-skip {
+  text-align: center;
+  margin-bottom: var(--spacing-md);
+}
+
+.apiconfig-skip-link {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-decoration: underline;
+  transition: color var(--transition-fast);
+  font-family: var(--font-family);
+}
+
+.apiconfig-skip-link:hover {
+  color: var(--color-text-secondary);
+}
+
+.apiconfig-skip-hint {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  margin-top: var(--spacing-xs);
+}
+
+/* ----- Actions ----- */
+.apiconfig-actions {
+  max-width: 640px;
+  width: 100%;
+  margin: var(--spacing-lg) auto 0;
+  display: flex;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+}
+
+.apiconfig-btn {
+  padding: 10px 24px;
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  font-family: var(--font-family);
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-normal);
+}
+
+.apiconfig-btn-secondary {
+  background: var(--color-bg-card);
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+}
+
+.apiconfig-btn-secondary:hover {
+  background: var(--color-bg-card-hover);
+  color: var(--color-text);
+  border-color: var(--color-border-light);
+}
+
+.apiconfig-btn-primary {
+  background: linear-gradient(135deg, var(--color-primary), var(--color-primary-hover));
+  color: var(--color-text);
+  box-shadow: var(--shadow-glow-primary);
+}
+
+.apiconfig-btn-primary:hover {
+  box-shadow: 0 0 24px rgba(229, 77, 66, 0.4);
+  transform: translateY(-1px);
+}
+
+/* ----- Responsive ----- */
+@media (max-width: 480px) {
+  .apiconfig-providers {
+    grid-template-columns: 1fr;
+  }
+}

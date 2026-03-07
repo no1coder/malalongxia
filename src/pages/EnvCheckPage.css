@@ -1,0 +1,408 @@
+/* ============================================================
+ * EnvCheckPage Styles
+ * Check list with status icons, badges, animations, and progress
+ * ============================================================ */
+
+.envcheck-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: var(--spacing-lg) var(--spacing-lg);
+  animation: fadeIn var(--transition-slow) ease;
+  overflow: hidden;
+}
+
+/* ----- Header ----- */
+.envcheck-header {
+  text-align: center;
+  margin-bottom: var(--spacing-lg);
+  flex-shrink: 0;
+}
+
+.envcheck-header h1 {
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-bold);
+  margin: 0;
+  color: var(--color-text);
+}
+
+.envcheck-header p {
+  color: var(--color-text-muted);
+  margin: var(--spacing-sm) 0 0;
+  font-size: var(--font-size-base);
+}
+
+/* ----- Progress Bar ----- */
+.envcheck-progress {
+  max-width: 600px;
+  width: 100%;
+  margin: 0 auto var(--spacing-lg);
+  flex-shrink: 0;
+}
+
+.envcheck-progress-bar {
+  width: 100%;
+  height: 4px;
+  background: var(--color-bg-card);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+
+.envcheck-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--color-primary), var(--color-accent));
+  border-radius: var(--radius-full);
+  transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+}
+
+.envcheck-progress-fill::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.2),
+    transparent
+  );
+  animation: shimmer 2s infinite;
+  background-size: 200% 100%;
+}
+
+.envcheck-progress-text {
+  text-align: right;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  margin-top: var(--spacing-xs);
+}
+
+/* ----- Check List ----- */
+.envcheck-list {
+  flex: 1;
+  max-width: 600px;
+  width: 100%;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.envcheck-item {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  padding: 14px var(--spacing-md);
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  transition: all var(--transition-normal);
+  animation: slideUp var(--transition-slow) ease forwards;
+  opacity: 0;
+}
+
+.envcheck-item:nth-child(1) { animation-delay: 100ms; }
+.envcheck-item:nth-child(2) { animation-delay: 200ms; }
+.envcheck-item:nth-child(3) { animation-delay: 300ms; }
+.envcheck-item:nth-child(4) { animation-delay: 400ms; }
+.envcheck-item:nth-child(5) { animation-delay: 500ms; }
+
+.envcheck-item.passed {
+  border-color: rgba(52, 211, 153, 0.3);
+  background: var(--color-success-light);
+}
+
+.envcheck-item.warning {
+  border-color: rgba(251, 191, 36, 0.3);
+  background: var(--color-warning-light);
+}
+
+.envcheck-item.failed {
+  border-color: rgba(239, 68, 68, 0.3);
+  background: var(--color-error-light);
+}
+
+/* ----- Status Icon (left) ----- */
+.envcheck-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.04);
+  transition: all var(--transition-normal);
+}
+
+.envcheck-icon svg {
+  width: 20px;
+  height: 20px;
+}
+
+.envcheck-icon.pending svg {
+  color: var(--color-text-muted);
+}
+
+.envcheck-icon.checking {
+  background: var(--color-info-light);
+}
+
+.envcheck-icon.checking svg {
+  color: var(--color-info);
+  animation: spin 1s linear infinite;
+}
+
+.envcheck-icon.passed {
+  background: var(--color-success-light);
+}
+
+.envcheck-icon.passed svg {
+  color: var(--color-success);
+  animation: scaleIn 0.3s ease forwards;
+}
+
+.envcheck-icon.warning {
+  background: var(--color-warning-light);
+}
+
+.envcheck-icon.warning svg {
+  color: var(--color-warning);
+}
+
+.envcheck-icon.failed {
+  background: var(--color-error-light);
+}
+
+.envcheck-icon.failed svg {
+  color: var(--color-error);
+  animation: scaleIn 0.3s ease forwards;
+}
+
+/* ----- Item Info (middle) ----- */
+.envcheck-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.envcheck-name {
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text);
+}
+
+.envcheck-detail {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  margin-top: 2px;
+  word-break: break-word;
+}
+
+.envcheck-detail.passed { color: var(--color-success); }
+.envcheck-detail.warning { color: var(--color-warning); }
+.envcheck-detail.failed { color: var(--color-error); }
+
+/* ----- Status Badge (right) ----- */
+.envcheck-badge {
+  flex-shrink: 0;
+  padding: 2px 10px;
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  white-space: nowrap;
+}
+
+.envcheck-badge.pending {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--color-text-muted);
+}
+
+.envcheck-badge.checking {
+  background: var(--color-info-light);
+  color: var(--color-info);
+}
+
+.envcheck-badge.passed {
+  background: var(--color-success-light);
+  color: var(--color-success);
+}
+
+.envcheck-badge.warning {
+  background: var(--color-warning-light);
+  color: var(--color-warning);
+}
+
+.envcheck-badge.failed {
+  background: var(--color-error-light);
+  color: var(--color-error);
+}
+
+/* ----- Summary Card ----- */
+.envcheck-summary {
+  max-width: 600px;
+  width: 100%;
+  margin: var(--spacing-md) auto 0;
+  padding: var(--spacing-md) var(--spacing-lg);
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  animation: slideUp var(--transition-slow) ease forwards;
+  animation-delay: 200ms;
+  opacity: 0;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.envcheck-summary.all-passed {
+  border-color: rgba(52, 211, 153, 0.3);
+  background: var(--color-success-light);
+}
+
+.envcheck-summary.has-issues {
+  border-color: rgba(251, 191, 36, 0.3);
+  background: var(--color-warning-light);
+}
+
+/* Summary icon */
+.envcheck-summary-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-full);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.envcheck-summary-icon svg {
+  width: 24px;
+  height: 24px;
+}
+
+.envcheck-summary.all-passed .envcheck-summary-icon {
+  background: rgba(52, 211, 153, 0.2);
+  color: var(--color-success);
+}
+
+.envcheck-summary.has-issues .envcheck-summary-icon {
+  background: rgba(251, 191, 36, 0.2);
+  color: var(--color-warning);
+}
+
+/* Summary text */
+.envcheck-summary-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.envcheck-summary-text h3 {
+  margin: 0 0 6px;
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text);
+}
+
+/* Stat badges row */
+.envcheck-summary-stats {
+  display: flex;
+  gap: var(--spacing-sm);
+  flex-wrap: wrap;
+}
+
+.envcheck-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+}
+
+.envcheck-stat.passed {
+  background: rgba(52, 211, 153, 0.15);
+  color: var(--color-success);
+}
+
+.envcheck-stat.warning {
+  background: rgba(251, 191, 36, 0.15);
+  color: var(--color-warning);
+}
+
+.envcheck-stat.failed {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--color-error);
+}
+
+.envcheck-network-warning {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--font-size-xs);
+  color: var(--color-warning);
+  padding-top: var(--spacing-xs);
+  border-top: 1px solid rgba(251, 191, 36, 0.15);
+  margin-top: 2px;
+}
+
+/* ----- Action Buttons (fixed bottom) ----- */
+.envcheck-actions {
+  max-width: 600px;
+  width: 100%;
+  margin: var(--spacing-md) auto 0;
+  padding-top: var(--spacing-md);
+  display: flex;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+  flex-shrink: 0;
+}
+
+.envcheck-btn {
+  padding: 10px 24px;
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  font-family: var(--font-family);
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-normal);
+}
+
+.envcheck-btn-secondary {
+  background: var(--color-bg-card);
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+}
+
+.envcheck-btn-secondary:hover {
+  background: var(--color-bg-card-hover);
+  color: var(--color-text);
+  border-color: var(--color-border-light);
+}
+
+.envcheck-btn-primary {
+  background: linear-gradient(135deg, var(--color-primary), var(--color-primary-hover));
+  color: var(--color-text);
+  box-shadow: var(--shadow-glow-primary);
+}
+
+.envcheck-btn-primary:hover {
+  box-shadow: 0 0 24px rgba(229, 77, 66, 0.4);
+  transform: translateY(-1px);
+}
+
+.envcheck-btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}

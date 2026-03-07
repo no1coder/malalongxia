@@ -1,0 +1,335 @@
+/* ============================================================
+ * OpenClawInstallPage Styles
+ * OpenClaw installation with step tracking and log viewer
+ * ============================================================ */
+
+.ocinstall-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: var(--spacing-lg) var(--spacing-lg);
+  animation: fadeIn var(--transition-slow) ease;
+  overflow: hidden;
+}
+
+/* ----- Header ----- */
+.ocinstall-header {
+  text-align: center;
+  margin-bottom: var(--spacing-xl);
+}
+
+.ocinstall-header h1 {
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-bold);
+  margin: 0;
+  color: var(--color-text);
+}
+
+.ocinstall-header p {
+  color: var(--color-text-muted);
+  margin: var(--spacing-sm) auto 0;
+  font-size: var(--font-size-base);
+  max-width: 500px;
+  line-height: var(--line-height-normal);
+}
+
+.ocinstall-content {
+  flex: 1;
+  max-width: 600px;
+  width: 100%;
+  margin: 0 auto;
+  overflow-y: auto;
+  padding-bottom: var(--spacing-md);
+}
+
+/* ----- Mirror Strategy Notice ----- */
+.ocinstall-strategy {
+  padding: var(--spacing-md);
+  background: var(--color-info-light);
+  border: 1px solid rgba(96, 165, 250, 0.2);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--spacing-lg);
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-sm);
+}
+
+.ocinstall-strategy svg {
+  color: var(--color-info);
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.ocinstall-strategy-text {
+  font-size: var(--font-size-sm);
+  color: var(--color-info);
+  line-height: var(--line-height-normal);
+}
+
+/* ----- Mirror Speed Test ----- */
+.ocinstall-mirrors {
+  margin-bottom: var(--spacing-lg);
+}
+
+.ocinstall-mirrors h3 {
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text);
+  margin: 0 0 var(--spacing-sm);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ocinstall-speedtest-btn {
+  font-size: var(--font-size-xs);
+  padding: 4px 10px;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  font-family: var(--font-family);
+}
+
+.ocinstall-speedtest-btn:hover {
+  background: var(--color-bg-card-hover);
+  color: var(--color-text);
+  border-color: var(--color-border-light);
+}
+
+.ocinstall-mirror-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.ocinstall-mirror {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: 10px var(--spacing-md);
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-normal);
+}
+
+.ocinstall-mirror:hover {
+  background: var(--color-bg-card-hover);
+  border-color: var(--color-border-light);
+}
+
+.ocinstall-mirror.selected {
+  border-color: var(--color-primary);
+  background: var(--color-primary-light);
+}
+
+.ocinstall-mirror.fastest {
+  border-color: rgba(52, 211, 153, 0.3);
+}
+
+.ocinstall-mirror-radio {
+  width: 16px;
+  height: 16px;
+  border-radius: var(--radius-full);
+  border: 2px solid var(--color-border-light);
+  flex-shrink: 0;
+  position: relative;
+  transition: border-color var(--transition-fast);
+}
+
+.ocinstall-mirror.selected .ocinstall-mirror-radio {
+  border-color: var(--color-primary);
+}
+
+.ocinstall-mirror.selected .ocinstall-mirror-radio::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: var(--color-primary);
+}
+
+.ocinstall-mirror-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.ocinstall-mirror-name {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.ocinstall-mirror.selected .ocinstall-mirror-name {
+  color: var(--color-text);
+}
+
+.ocinstall-mirror-url {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ocinstall-mirror-badge {
+  font-size: var(--font-size-xs);
+  padding: 2px 8px;
+  background: var(--color-success-light);
+  color: var(--color-success);
+  border-radius: var(--radius-full);
+  font-weight: var(--font-weight-medium);
+}
+
+.ocinstall-mirror-latency {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+/* ----- Progress Area ----- */
+.ocinstall-progress {
+  margin-bottom: var(--spacing-md);
+}
+
+.ocinstall-progress-status {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  margin-bottom: var(--spacing-sm);
+}
+
+.ocinstall-progress-percent {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  text-align: right;
+  margin-top: var(--spacing-xs);
+}
+
+.ocinstall-progress-bar-container {
+  height: 6px;
+  background: var(--color-bg-card);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+
+.ocinstall-progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, var(--color-primary), var(--color-accent));
+  border-radius: var(--radius-full);
+  transition: width 0.4s ease;
+  position: relative;
+}
+
+.ocinstall-progress-bar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+  animation: shimmer 2s infinite;
+  background-size: 200% 100%;
+}
+
+.ocinstall-progress-bar.indeterminate {
+  width: 30% !important;
+  animation: oc-progress-slide 1.5s ease-in-out infinite;
+}
+
+@keyframes oc-progress-slide {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(400%); }
+}
+
+/* ----- Log Viewer ----- */
+.ocinstall-logs {
+  max-height: 220px;
+  overflow-y: auto;
+  padding: var(--spacing-md);
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  line-height: var(--line-height-relaxed);
+  margin-bottom: var(--spacing-lg);
+}
+
+.ocinstall-log-entry {
+  color: var(--color-text-muted);
+  padding: 1px 0;
+}
+
+.ocinstall-log-entry.info {
+  color: var(--color-text-secondary);
+}
+
+.ocinstall-log-entry.warn {
+  color: var(--color-warning);
+}
+
+.ocinstall-log-entry.error {
+  color: var(--color-error);
+}
+
+/* ----- Actions ----- */
+.ocinstall-actions {
+  max-width: 600px;
+  width: 100%;
+  margin: var(--spacing-lg) auto 0;
+  display: flex;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+}
+
+.ocinstall-btn {
+  padding: 10px 24px;
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  font-family: var(--font-family);
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-normal);
+}
+
+.ocinstall-btn-secondary {
+  background: var(--color-bg-card);
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+}
+
+.ocinstall-btn-secondary:hover {
+  background: var(--color-bg-card-hover);
+  color: var(--color-text);
+  border-color: var(--color-border-light);
+}
+
+.ocinstall-btn-primary {
+  background: linear-gradient(135deg, var(--color-primary), var(--color-primary-hover));
+  color: var(--color-text);
+  box-shadow: var(--shadow-glow-primary);
+}
+
+.ocinstall-btn-primary:hover {
+  box-shadow: 0 0 24px rgba(229, 77, 66, 0.4);
+  transform: translateY(-1px);
+}
+
+.ocinstall-btn-full {
+  width: 100%;
+  margin-bottom: var(--spacing-md);
+}
+
+.ocinstall-btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
