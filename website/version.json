@@ -5,7 +5,6 @@
   "downloads": {
     "macOS_arm64": "./downloads/OpenClawX_0.2.2_aarch64.dmg",
     "macOS_x64": "./downloads/OpenClawX_0.2.2_x64.dmg",
-    "windows_x64": "./downloads/OpenClawX_0.2.2_x64-setup.exe",
-    "linux_amd64": "./downloads/OpenClawX_0.2.2_amd64.AppImage"
+    "windows_x64": "./downloads/OpenClawX_0.2.2_x64-setup.exe"
   }
 }
