@@ -801,9 +801,8 @@ pub async fn install_openclaw(mirror: String, window: Window) -> Result<InstallR
     stream_child_output(&window, ch, child).await?;
     emit_progress(&window, ch, 20, "npm registry configured.");
 
-    // Configure git to use HTTPS instead of SSH for GitHub
-    // Some npm packages reference GitHub via SSH (git@github.com:...),
-    // which fails when the user has no SSH key configured.
+    // Rewrite GitHub SSH → HTTPS so users without SSH keys aren't blocked.
+    // Then check if GitHub is reachable; if not, route through a mirror.
     let _ = cmd("git")
         .args(["config", "--global", "url.https://github.com/.insteadOf", "ssh://git@github.com/"])
         .output()
@@ -812,6 +811,41 @@ pub async fn install_openclaw(mirror: String, window: Window) -> Result<InstallR
         .args(["config", "--global", "url.https://github.com/.insteadOf", "git@github.com:"])
         .output()
         .await;
+
+    // Test direct GitHub connectivity (many Chinese users can't reach it)
+    let github_ok = reqwest::Client::new()
+        .head("https://github.com")
+        .timeout(std::time::Duration::from_secs(8))
+        .send()
+        .await
+        .map(|r| r.status().is_success() || r.status().is_redirection())
+        .unwrap_or(false);
+
+    if !github_ok {
+        emit_log(&window, ch, "GitHub unreachable, configuring mirror proxy...");
+        // Try known GitHub mirror proxies in order
+        let mirrors = [
+            "https://ghfast.top/https://github.com/",
+            "https://mirror.ghproxy.com/https://github.com/",
+            "https://gh-proxy.com/https://github.com/",
+        ];
+        for mirror_url in &mirrors {
+            let ok = reqwest::Client::new()
+                .head(*mirror_url)
+                .timeout(std::time::Duration::from_secs(5))
+                .send()
+                .await
+                .is_ok();
+            if ok {
+                emit_log(&window, ch, &format!("Using GitHub mirror: {}", mirror_url));
+                let _ = cmd("git")
+                    .args(["config", "--global", &format!("url.{}.insteadOf", mirror_url), "https://github.com/"])
+                    .output()
+                    .await;
+                break;
+            }
+        }
+    }
 
     // Step 2: Install openclaw globally with retry mechanism
     emit_progress(&window, ch, 30, "Installing openclaw...");
@@ -850,6 +884,20 @@ pub async fn install_openclaw(mirror: String, window: Window) -> Result<InstallR
                 }
             }
         }
+    }
+
+    // Clean up temporary git config (remove GitHub mirror rewrite)
+    let _ = cmd("git")
+        .args(["config", "--global", "--unset-all", "url.https://github.com/.insteadOf"])
+        .output()
+        .await;
+    // Remove mirror proxy insteadOf entries (pattern varies by which mirror was used)
+    for prefix in ["https://ghfast.top/", "https://mirror.ghproxy.com/", "https://gh-proxy.com/"] {
+        let key = format!("url.{}https://github.com/.insteadOf", prefix);
+        let _ = cmd("git")
+            .args(["config", "--global", "--unset-all", &key])
+            .output()
+            .await;
     }
 
     if !last_error.is_empty() {
