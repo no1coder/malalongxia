@@ -7,12 +7,12 @@
 
   // ----- Scroll-triggered animations -----
   function initScrollAnimations() {
-    const elements = document.querySelectorAll('.animate-on-scroll');
+    var elements = document.querySelectorAll('.animate-on-scroll');
     if (!elements.length) return;
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
+    var observer = new IntersectionObserver(
+      function (entries) {
+        entries.forEach(function (entry) {
           if (entry.isIntersecting) {
             entry.target.classList.add('visible');
             observer.unobserve(entry.target);
@@ -22,42 +22,38 @@
       { threshold: 0.1, rootMargin: '0px 0px -40px 0px' }
     );
 
-    elements.forEach((el, i) => {
-      el.style.transitionDelay = `${i % 6 * 80}ms`;
+    elements.forEach(function (el, i) {
+      el.style.transitionDelay = (i % 6 * 80) + 'ms';
       observer.observe(el);
     });
   }
 
   // ----- Navbar scroll effect -----
   function initNavbar() {
-    const nav = document.getElementById('nav');
+    var nav = document.getElementById('nav');
     if (!nav) return;
 
-    let lastScroll = 0;
-    window.addEventListener('scroll', () => {
-      const scrollY = window.scrollY;
-      if (scrollY > 20) {
+    window.addEventListener('scroll', function () {
+      if (window.scrollY > 20) {
         nav.classList.add('scrolled');
       } else {
         nav.classList.remove('scrolled');
       }
-      lastScroll = scrollY;
     }, { passive: true });
   }
 
   // ----- Mobile menu toggle -----
   function initMobileMenu() {
-    const btn = document.getElementById('navMenuBtn');
-    const mobile = document.getElementById('navMobile');
+    var btn = document.getElementById('navMenuBtn');
+    var mobile = document.getElementById('navMobile');
     if (!btn || !mobile) return;
 
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', function () {
       mobile.classList.toggle('open');
     });
 
-    // Close menu when clicking a link
-    mobile.querySelectorAll('a').forEach((link) => {
-      link.addEventListener('click', () => {
+    mobile.querySelectorAll('a').forEach(function (link) {
+      link.addEventListener('click', function () {
         mobile.classList.remove('open');
       });
     });
@@ -65,15 +61,15 @@
 
   // ----- Smooth scroll for anchor links -----
   function initSmoothScroll() {
-    document.querySelectorAll('a[href^="#"]').forEach((link) => {
-      link.addEventListener('click', (e) => {
-        const targetId = link.getAttribute('href');
+    document.querySelectorAll('a[href^="#"]').forEach(function (link) {
+      link.addEventListener('click', function (e) {
+        var targetId = link.getAttribute('href');
         if (targetId === '#') return;
-        const target = document.querySelector(targetId);
+        var target = document.querySelector(targetId);
         if (!target) return;
         e.preventDefault();
-        const navHeight = 64;
-        const y = target.getBoundingClientRect().top + window.scrollY - navHeight;
+        var navHeight = 64;
+        var y = target.getBoundingClientRect().top + window.scrollY - navHeight;
         window.scrollTo({ top: y, behavior: 'smooth' });
       });
     });
@@ -81,20 +77,22 @@
 
   // ----- macOS download modal -----
   function initMacModal() {
-    const btn = document.getElementById('macDownloadBtn');
-    const modal = document.getElementById('macModal');
-    const closeBtn = document.getElementById('macModalClose');
+    var btn = document.getElementById('macDownloadBtn');
+    var modal = document.getElementById('macModal');
+    var closeBtn = document.getElementById('macModalClose');
     if (!btn || !modal) return;
 
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', function () {
       modal.classList.add('open');
     });
 
-    closeBtn?.addEventListener('click', () => {
-      modal.classList.remove('open');
-    });
+    if (closeBtn) {
+      closeBtn.addEventListener('click', function () {
+        modal.classList.remove('open');
+      });
+    }
 
-    modal.addEventListener('click', (e) => {
+    modal.addEventListener('click', function (e) {
       if (e.target === modal) {
         modal.classList.remove('open');
       }
@@ -103,11 +101,9 @@
 
   // ----- Download then redirect to tips -----
   function initDownloadRedirect() {
-    document.querySelectorAll('[data-download]').forEach((link) => {
-      link.addEventListener('click', (e) => {
-        // Let the browser start the download via default href behavior,
-        // then redirect to tips page after a short delay
-        setTimeout(() => {
+    document.querySelectorAll('[data-download]').forEach(function (link) {
+      link.addEventListener('click', function () {
+        setTimeout(function () {
           window.location.href = 'tips.html';
         }, 1500);
       });
@@ -115,7 +111,7 @@
   }
 
   // ----- Initialize -----
-  document.addEventListener('DOMContentLoaded', () => {
+  document.addEventListener('DOMContentLoaded', function () {
     initNavbar();
     initMobileMenu();
     initSmoothScroll();

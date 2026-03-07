@@ -82,6 +82,9 @@ export default function DashboardPage({
   const [repairStatus, setRepairStatus] = useState<"idle" | "repairing" | "done" | "error">("idle");
   const [repairOutput, setRepairOutput] = useState<string | null>(null);
 
+  // Reinstall confirm dialog (window.confirm doesn't work in macOS WKWebView)
+  const [showReinstallConfirm, setShowReinstallConfirm] = useState(false);
+
   // On mount, re-check gateway status
   const statusCheckDone = useRef(false);
   useEffect(() => {
@@ -405,17 +408,40 @@ export default function DashboardPage({
 
           <button
             className="dashboard-btn dashboard-btn-danger"
-            onClick={() => {
-              if (window.confirm(t("dashboard.reinstallConfirm"))) {
-                onReinstall();
-              }
-            }}
+            onClick={() => setShowReinstallConfirm(true)}
           >
             <RotateCcw size={16} />
             {t("dashboard.reinstall")}
           </button>
         </div>
       </div>
+
+      {/* Reinstall confirm dialog */}
+      {showReinstallConfirm && (
+        <div className="dashboard-confirm-overlay" onClick={() => setShowReinstallConfirm(false)}>
+          <div className="dashboard-confirm-dialog" onClick={(e) => e.stopPropagation()}>
+            <AlertCircle size={24} className="dashboard-confirm-icon" />
+            <p className="dashboard-confirm-text">{t("dashboard.reinstallConfirm")}</p>
+            <div className="dashboard-confirm-actions">
+              <button
+                className="dashboard-btn dashboard-btn-secondary"
+                onClick={() => setShowReinstallConfirm(false)}
+              >
+                {t("common.cancel")}
+              </button>
+              <button
+                className="dashboard-btn dashboard-btn-danger"
+                onClick={() => {
+                  setShowReinstallConfirm(false);
+                  onReinstall();
+                }}
+              >
+                {t("dashboard.reinstall")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

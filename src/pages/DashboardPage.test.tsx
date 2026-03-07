@@ -302,14 +302,18 @@ describe("DashboardPage", () => {
     expect(DEFAULT_PROPS.onReconfigureApi).toHaveBeenCalledTimes(1);
   });
 
-  it("calls onReinstall when reinstall clicked and confirmed", async () => {
+  it("calls onReinstall when reinstall clicked and confirmed via dialog", async () => {
     const user = userEvent.setup();
-    vi.spyOn(window, "confirm").mockReturnValue(true);
     renderWithRouter(<DashboardPage {...DEFAULT_PROPS} />);
 
+    // Click reinstall button to open confirm dialog
     await user.click(screen.getByText("dashboard.reinstall"));
+    // Confirm dialog should appear with confirm text
+    expect(screen.getByText("dashboard.reinstallConfirm")).toBeInTheDocument();
+    // Click the confirm (reinstall) button in the dialog
+    const reinstallButtons = screen.getAllByText("dashboard.reinstall");
+    await user.click(reinstallButtons[reinstallButtons.length - 1]);
     expect(DEFAULT_PROPS.onReinstall).toHaveBeenCalledTimes(1);
-    vi.mocked(window.confirm).mockRestore();
   });
 
   it("renders view tutorial button", () => {

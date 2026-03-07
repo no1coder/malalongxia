@@ -87,6 +87,23 @@ describe("CompletionPage", () => {
     });
   });
 
+  it("calls onComplete after successful launch", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const onComplete = vi.fn();
+    mockInvoke.mockResolvedValue("http://localhost:18789");
+    renderWithRouter(<CompletionPage onComplete={onComplete} />);
+
+    await user.click(screen.getByText("completion.startUsing"));
+    await waitFor(() => {
+      expect(screen.getByText(/completion.launchSuccess/)).toBeInTheDocument();
+    });
+
+    vi.advanceTimersByTime(1500);
+    expect(onComplete).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+  });
+
   it("shows error message on launch failure", async () => {
     const user = userEvent.setup();
     mockInvoke.mockRejectedValue(new Error("Gateway failed"));

@@ -146,6 +146,20 @@ jobs:
             console.log('Injected resources config into tauri.conf.json');
           "
 
+      # --- Set productName based on edition so artifact filenames include the suffix ---
+      - name: Set productName for edition
+        shell: bash
+        run: |
+          node -e "
+            const fs = require('fs');
+            const conf = JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json', 'utf8'));
+            const edition = '${{ matrix.edition }}';
+            const suffix = edition.charAt(0).toUpperCase() + edition.slice(1);
+            conf.productName = 'OpenClawX-' + suffix;
+            fs.writeFileSync('src-tauri/tauri.conf.json', JSON.stringify(conf, null, 2) + '\n');
+            console.log('productName set to: ' + conf.productName);
+          "
+
       # --- Build ---
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
@@ -159,42 +173,19 @@ jobs:
 
             ### Downloads
 
-            **Full 完整版**（推荐，内置 Node.js + Git，无需联网安装）
+            **Full 完整版**（推荐，内置 Node.js + Git，无需联网安装依赖）
             | Platform | File |
             |----------|------|
-            | macOS (Apple Silicon) | `OpenClawX_*_aarch64.dmg` (Full) |
-            | macOS (Intel) | `OpenClawX_*_x64.dmg` (Full) |
-            | Windows | `OpenClawX_*_x64-setup.exe` (Full) |
+            | macOS (Apple Silicon) | `OpenClawX-Full_*_aarch64.dmg` |
+            | macOS (Intel) | `OpenClawX-Full_*_x64.dmg` |
+            | Windows | `OpenClawX-Full_*_x64-setup.exe` |
 
             **Lite 精简版**（体积小，运行时在线下载依赖）
             | Platform | File |
             |----------|------|
-            | macOS (Apple Silicon) | `OpenClawX_*_aarch64.dmg` (Lite) |
-            | macOS (Intel) | `OpenClawX_*_x64.dmg` (Lite) |
-            | Windows | `OpenClawX_*_x64-setup.exe` (Lite) |
+            | macOS (Apple Silicon) | `OpenClawX-Lite_*_aarch64.dmg` |
+            | macOS (Intel) | `OpenClawX-Lite_*_x64.dmg` |
+            | Windows | `OpenClawX-Lite_*_x64-setup.exe` |
           releaseDraft: true
           prerelease: false
           args: --target ${{ matrix.target }}
-
-      # --- Rename artifacts to include edition suffix ---
-      - name: Rename artifacts with edition suffix (macOS)
-        if: runner.os == 'macOS'
-        shell: bash
-        run: |
-          cd src-tauri/target/${{ matrix.target }}/release/bundle/dmg
-          for f in *.dmg; do
-            base="${f%.dmg}"
-            mv "$f" "${base}-${{ matrix.edition }}.dmg"
-            echo "Renamed: $f -> ${base}-${{ matrix.edition }}.dmg"
-          done
-
-      - name: Rename artifacts with edition suffix (Windows)
-        if: runner.os == 'Windows'
-        shell: bash
-        run: |
-          cd src-tauri/target/${{ matrix.target }}/release/bundle/nsis
-          for f in *.exe; do
-            base="${f%.exe}"
-            mv "$f" "${base}-${{ matrix.edition }}.exe"
-            echo "Renamed: $f -> ${base}-${{ matrix.edition }}.exe"
-          done

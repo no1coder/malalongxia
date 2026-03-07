@@ -12,6 +12,7 @@ import {
   Bell,
   AlertCircle,
 } from "lucide-react";
+import qrCodeFallback from "../assets/qrcode.png";
 import "./CompletionPage.css";
 
 const TIPS_URL = "https://malalongxia.com/tips.html";
@@ -24,13 +25,17 @@ const BENEFITS = [
   { icon: Bell, color: "rgba(255, 77, 77, 0.15)", stroke: "#ff4d4d", titleKey: "completion.benefitBeta", descKey: "completion.benefitBetaDesc" },
 ] as const;
 
-export default function CompletionPage() {
+interface CompletionPageProps {
+  readonly onComplete?: () => void;
+}
+
+export default function CompletionPage({ onComplete }: CompletionPageProps) {
   const { t } = useTranslation();
   const { nodeVersion, nodeRequired, openclawVersion, selectedProvider } = useInstallStore();
   const [launchStatus, setLaunchStatus] = useState<"idle" | "launching" | "success" | "error">("idle");
   const [launchMessage, setLaunchMessage] = useState<string | null>(null);
 
-  // Launch OpenClaw via Tauri backend
+  // Launch OpenClaw via Tauri backend, then transition to dashboard
   const handleLaunch = useCallback(async () => {
     setLaunchMessage(null);
     setLaunchStatus("launching");
@@ -38,11 +43,15 @@ export default function CompletionPage() {
       const url = await invoke<string>("launch_openclaw");
       setLaunchStatus("success");
       setLaunchMessage(url);
+      // Transition to dashboard after a brief delay so user sees the success state
+      if (onComplete) {
+        setTimeout(onComplete, 1500);
+      }
     } catch (err) {
       setLaunchStatus("error");
       setLaunchMessage(String(err));
     }
-  }, []);
+  }, [onComplete]);
 
   const handleTips = useCallback(() => {
     openUrl(TIPS_URL);
@@ -122,7 +131,13 @@ export default function CompletionPage() {
           <h3>{t("completion.scanTitle")}</h3>
           <p>{t("completion.scanDesc")}</p>
           <div className="completion-qr-wrap">
-            <img src={QR_URL} alt="WeChat QR" width="180" height="180" />
+            <img
+              src={QR_URL}
+              alt="WeChat QR"
+              width="180"
+              height="180"
+              onError={(e) => { e.currentTarget.src = qrCodeFallback; }}
+            />
           </div>
           <p className="completion-qr-hint">{t("completion.scanHint")}</p>
         </div>

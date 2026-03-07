@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route, useLocation, useNavigate } from "react-router-dom";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Layout } from "./components/Layout";
 import { UpdateBanner } from "./components/UpdateBanner";
@@ -121,6 +121,27 @@ function AppShell() {
     navigate("/", { replace: true });
   };
 
+  const handleInstallComplete = useCallback(async () => {
+    try {
+      const status = await invoke<OpenClawStatus>("check_openclaw_status");
+      setOpenclawStatus(status);
+      setCheckState("dashboard");
+      navigate("/dashboard", { replace: true });
+    } catch {
+      // Fallback: navigate to dashboard with minimal status
+      setOpenclawStatus({
+        installed: true,
+        running: true,
+        current_version: null,
+        latest_version: null,
+        needs_update: false,
+        gateway_url: "http://localhost:3000",
+      });
+      setCheckState("dashboard");
+      navigate("/dashboard", { replace: true });
+    }
+  }, [navigate]);
+
   const handleReconfigureApi = () => {
     navigate("/reconfig-api", { replace: true });
   };
@@ -214,7 +235,7 @@ function AppShell() {
         <Route path="/node-install" element={<NodeInstallPage />} />
         <Route path="/openclaw-install" element={<OpenClawInstallPage />} />
         <Route path="/api-config" element={<ApiConfigPage />} />
-        <Route path="/completion" element={<CompletionPage />} />
+        <Route path="/completion" element={<CompletionPage onComplete={handleInstallComplete} />} />
         <Route
           path="/dashboard"
           element={

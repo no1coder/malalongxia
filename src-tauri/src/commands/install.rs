@@ -1125,9 +1125,12 @@ pub async fn install_openclaw(mirror: String, app: tauri::AppHandle, window: Win
     if !github_ok {
         emit_log(&window, ch, "GitHub unreachable, configuring mirror proxy...");
         let mirrors = [
-            "https://ghfast.top/https://github.com/",
-            "https://mirror.ghproxy.com/https://github.com/",
             "https://gh-proxy.com/https://github.com/",
+            "https://github.com/",
+            "https://ghfast.top/https://github.com/",
+            "https://ghproxy.net/https://github.com/",
+            "https://mirror.ghproxy.com/https://github.com/",
+            "https://github.moeyy.xyz/https://github.com/",
         ];
         for mirror_url in &mirrors {
             let ok = reqwest::Client::new()

@@ -983,6 +983,12 @@ img { max-width: 100%; display: block; }
   min-width: 180px;
 }
 
+.download-version {
+  color: #666;
+  font-size: 13px;
+  margin: 0 0 12px;
+}
+
 /* Download modal */
 .modal-overlay {
   display: none;

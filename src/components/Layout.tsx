@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Languages, CircleHelp, ExternalLink } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import appIcon from "../assets/app-icon.png";
+import qrCodeFallback from "../assets/qrcode.png";
 import { StepIndicator, type StepInfo } from "./StepIndicator";
 
 interface LayoutProps {
@@ -86,7 +87,13 @@ export function Layout({
             <h3>{t("completion.contactTitle")}</h3>
             <p>{t("completion.contactDesc")}</p>
             <div className="layout__qr-img">
-              <img src="https://malalongxia.com/qrcode.png" alt="WeChat QR" width="200" height="200" />
+              <img
+                src="https://malalongxia.com/qrcode.png"
+                alt="WeChat QR"
+                width="200"
+                height="200"
+                onError={(e) => { e.currentTarget.src = qrCodeFallback; }}
+              />
             </div>
             <button className="layout__qr-close" onClick={() => setShowQr(false)}>
               {t("common.close")}
