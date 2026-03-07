@@ -126,7 +126,7 @@ describe("ApiConfigPage", () => {
     expect(proxyBadges.length).toBeGreaterThanOrEqual(2);
   });
 
-  it("calls configure_api invoke on test connection", async () => {
+  it("calls test_api_connection invoke on test connection", async () => {
     const user = userEvent.setup();
     mockInvoke.mockResolvedValue(undefined);
     renderWithRouter(<ApiConfigPage />);
@@ -137,10 +137,10 @@ describe("ApiConfigPage", () => {
 
     await user.click(screen.getByText("apiConfig.testConnection"));
 
-    expect(mockInvoke).toHaveBeenCalledWith("configure_api", {
-      provider: "zhipu",
+    expect(mockInvoke).toHaveBeenCalledWith("test_api_connection", {
       apiKey: "sk-test",
       baseUrl: "https://open.bigmodel.cn/api/paas/v4",
+      model: "glm-5",
     });
   });
 });

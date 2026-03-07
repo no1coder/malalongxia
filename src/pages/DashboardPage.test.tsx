@@ -302,12 +302,14 @@ describe("DashboardPage", () => {
     expect(DEFAULT_PROPS.onReconfigureApi).toHaveBeenCalledTimes(1);
   });
 
-  it("calls onReinstall when reinstall clicked", async () => {
+  it("calls onReinstall when reinstall clicked and confirmed", async () => {
     const user = userEvent.setup();
+    vi.spyOn(window, "confirm").mockReturnValue(true);
     renderWithRouter(<DashboardPage {...DEFAULT_PROPS} />);
 
     await user.click(screen.getByText("dashboard.reinstall"));
     expect(DEFAULT_PROPS.onReinstall).toHaveBeenCalledTimes(1);
+    vi.mocked(window.confirm).mockRestore();
   });
 
   it("renders view tutorial button", () => {

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { screen } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 const { mockGoToStep, mockInvoke, mockListen } = vi.hoisted(() => ({
@@ -30,6 +30,22 @@ vi.mock("../hooks/useStepNavigation", () => ({
 vi.mock("@tauri-apps/api/core", () => ({ invoke: mockInvoke }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: mockListen }));
 
+vi.mock("../hooks/useMirrorConfig", () => ({
+  useMirrorConfig: () => ({
+    nodeMirrors: [
+      { name: "mirror.aliyun", url: "https://npmmirror.com/mirrors/node/", type: "node" },
+      { name: "mirror.tencent", url: "https://mirrors.cloud.tencent.com/nodejs-release/", type: "node" },
+      { name: "mirror.tsinghua", url: "https://mirrors.tuna.tsinghua.edu.cn/nodejs-release/", type: "node" },
+      { name: "mirror.huawei", url: "https://repo.huaweicloud.com/nodejs/", type: "node" },
+    ],
+    npmMirrors: [],
+    nvmInstallScript: null,
+    nodeVersion: null,
+    isLoading: false,
+    isRemote: false,
+  }),
+}));
+
 import { useInstallStore } from "../stores/useInstallStore";
 import NodeInstallPage from "./NodeInstallPage";
 import { renderWithRouter } from "../test/render";
@@ -40,13 +56,22 @@ describe("NodeInstallPage", () => {
     mockInvoke.mockClear();
     mockListen.mockClear();
     mockListen.mockImplementation(() => Promise.resolve(vi.fn()));
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "test_mirror_latency") return Promise.resolve(100);
+      if (cmd === "fetch_mirror_config") return Promise.resolve({
+        version: 1, updated_at: "", node_mirrors: [], npm_mirrors: [],
+        nvm_install_script: null, node_version: null,
+      });
+      if (cmd === "install_node") return Promise.resolve(undefined);
+      return Promise.resolve(null);
+    });
     useInstallStore.setState({
       nodeVersion: null,
       nodeRequired: true,
       nodeInstallStatus: "idle",
       nodeInstallMethod: "nvm",
       nodeInstallLogs: [],
-      selectedMirror: { name: "aliyun", url: "https://npmmirror.com/mirrors/node/", type: "node" },
+      selectedMirror: { name: "mirror.aliyun", url: "https://npmmirror.com/mirrors/node/", type: "node" },
     });
   });
 
@@ -84,6 +109,7 @@ describe("NodeInstallPage", () => {
   it("renders mirror selection list", () => {
     renderWithRouter(<NodeInstallPage />);
     expect(screen.getByText("nodeInstall.mirrorSelect")).toBeInTheDocument();
+    // Mirror names come from useMirrorConfig mock, rendered via t(mirror.name)
     expect(screen.getByText("mirror.aliyun")).toBeInTheDocument();
   });
 
@@ -97,22 +123,36 @@ describe("NodeInstallPage", () => {
 
   it("navigates to step 3 when nodeRequired is false", async () => {
     const user = userEvent.setup();
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "verify_node_npm") return Promise.resolve({ node_available: true, npm_available: true, node_version: "v22.14.0", npm_version: "10.9.2" });
+      if (cmd === "test_mirror_latency") return Promise.resolve(100);
+      return Promise.resolve(null);
+    });
     useInstallStore.setState({ nodeRequired: false });
     renderWithRouter(<NodeInstallPage />);
 
     await user.click(screen.getByText("btn.next"));
-    expect(mockGoToStep).toHaveBeenCalledWith(3);
+    await waitFor(() => {
+      expect(mockGoToStep).toHaveBeenCalledWith(3);
+    });
   });
 
-  it("starts install on next click when idle and required", async () => {
+  it("starts install on install button click when idle and required", async () => {
     const user = userEvent.setup();
-    mockInvoke.mockResolvedValue(undefined);
     renderWithRouter(<NodeInstallPage />);
 
-    await user.click(screen.getByText("btn.next"));
-    expect(mockInvoke).toHaveBeenCalledWith("install_node", {
-      mirror: "https://npmmirror.com/mirrors/node/",
-      method: "nvm",
+    // The install button shows "nodeInstall.installBtn" when idle
+    await waitFor(() => {
+      const btn = screen.getByText("nodeInstall.installBtn");
+      expect(btn).not.toBeDisabled();
+    });
+
+    await user.click(screen.getByText("nodeInstall.installBtn"));
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith("install_node", {
+        mirror: "https://npmmirror.com/mirrors/node/",
+        method: "nvm",
+      });
     });
   });
 
@@ -142,8 +182,8 @@ describe("NodeInstallPage", () => {
 
   it("registers event listeners on mount", () => {
     renderWithRouter(<NodeInstallPage />);
-    expect(mockListen).toHaveBeenCalledWith("install-progress", expect.any(Function));
-    expect(mockListen).toHaveBeenCalledWith("install-log", expect.any(Function));
+    expect(mockListen).toHaveBeenCalledWith("node-install-progress", expect.any(Function));
+    expect(mockListen).toHaveBeenCalledWith("node-install-log", expect.any(Function));
   });
 
   it("shows log entries when present", () => {
@@ -161,11 +201,18 @@ describe("NodeInstallPage", () => {
 
   it("allows retry after error", async () => {
     const user = userEvent.setup();
-    mockInvoke.mockResolvedValue(undefined);
     useInstallStore.setState({ nodeInstallStatus: "error" });
     renderWithRouter(<NodeInstallPage />);
 
-    await user.click(screen.getByText("btn.next"));
-    expect(mockInvoke).toHaveBeenCalled();
+    // Error state shows "btn.retry" button
+    await waitFor(() => {
+      const btn = screen.getByText("btn.retry");
+      expect(btn).not.toBeDisabled();
+    });
+
+    await user.click(screen.getByText("btn.retry"));
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith("install_node", expect.any(Object));
+    });
   });
 });
