@@ -321,34 +321,51 @@ async fn install_portable_git(window: &Window, channel: &str) -> Result<(), Stri
 
             emit_log(window, channel, &format!("Extracting MinGit to {} ...", git_dir.display()));
 
-            // Use PowerShell to extract zip (built-in on all modern Windows)
-            // Try powershell.exe via system path first, fallback to full path
-            let extract_cmd = format!(
-                "Expand-Archive -Force -Path '{}' -DestinationPath '{}'",
-                tmp_str,
-                git_dir.display()
-            );
-            let ps_candidates = [
-                "powershell.exe".to_string(),
-                format!("{}\\WindowsPowerShell\\v1.0\\powershell.exe",
-                    std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".to_string())),
-            ];
-            let mut spawn_result = None;
-            for ps in &ps_candidates {
-                match Command::new(ps)
-                    .args(["-NoProfile", "-Command", &extract_cmd])
-                    .stdout(std::process::Stdio::piped())
-                    .stderr(std::process::Stdio::piped())
-                    .spawn()
-                {
-                    Ok(child) => { spawn_result = Some(child); break; }
-                    Err(_) => continue,
+            // Create destination dir before extraction
+            let _ = tokio::fs::create_dir_all(&git_dir).await;
+
+            // Try tar.exe first (built-in on Windows 10 1803+), then PowerShell fallback
+            let tar_result = Command::new("tar")
+                .args(["-xf", &tmp_str, "-C", &git_dir.to_string_lossy()])
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .spawn();
+
+            match tar_result {
+                Ok(child) => {
+                    stream_child_output(window, channel, child).await?;
+                }
+                Err(_) => {
+                    // Fallback: PowerShell Expand-Archive
+                    emit_log(window, channel, "tar not available, trying PowerShell...");
+                    let extract_cmd = format!(
+                        "Expand-Archive -Force -Path '{}' -DestinationPath '{}'",
+                        tmp_str,
+                        git_dir.display()
+                    );
+                    let ps_paths = [
+                        "powershell.exe".to_string(),
+                        format!("{}\\WindowsPowerShell\\v1.0\\powershell.exe",
+                            std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".to_string())),
+                    ];
+                    let mut ps_child = None;
+                    for ps in &ps_paths {
+                        if let Ok(c) = Command::new(ps)
+                            .args(["-NoProfile", "-Command", &extract_cmd])
+                            .stdout(std::process::Stdio::piped())
+                            .stderr(std::process::Stdio::piped())
+                            .spawn()
+                        {
+                            ps_child = Some(c);
+                            break;
+                        }
+                    }
+                    let child = ps_child.ok_or_else(|| {
+                        "Failed to extract MinGit: neither tar nor PowerShell found".to_string()
+                    })?;
+                    stream_child_output(window, channel, child).await?;
                 }
             }
-            let child = spawn_result
-                .ok_or_else(|| "Failed to extract MinGit: PowerShell not found".to_string())?;
-
-            stream_child_output(window, channel, child).await?;
 
             // Add MinGit to current process PATH so subsequent commands find git
             let git_cmd_dir = git_dir.join("cmd");
