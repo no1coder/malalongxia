@@ -205,7 +205,6 @@ pub fn version_tuple_from_path(path: &std::path::Path) -> (u64, u64, u64) {
     extract_version_tuple(path)
 }
 
-#[cfg(unix)]
 fn extract_version_tuple(path: &std::path::Path) -> (u64, u64, u64) {
     for component in path.components() {
         let s = component.as_os_str().to_string_lossy();
