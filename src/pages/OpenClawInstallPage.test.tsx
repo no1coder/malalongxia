@@ -220,7 +220,7 @@ describe("OpenClawInstallPage", () => {
 
   it("selects a different mirror on click", async () => {
     const user = userEvent.setup();
-    const { container } = renderWithRouter(<OpenClawInstallPage />);
+    renderWithRouter(<OpenClawInstallPage />);
 
     await user.click(screen.getByText("mirror.official"));
     // The clicked mirror should now have the "selected" class
