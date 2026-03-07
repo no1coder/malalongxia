@@ -801,6 +801,18 @@ pub async fn install_openclaw(mirror: String, window: Window) -> Result<InstallR
     stream_child_output(&window, ch, child).await?;
     emit_progress(&window, ch, 20, "npm registry configured.");
 
+    // Configure git to use HTTPS instead of SSH for GitHub
+    // Some npm packages reference GitHub via SSH (git@github.com:...),
+    // which fails when the user has no SSH key configured.
+    let _ = cmd("git")
+        .args(["config", "--global", "url.https://github.com/.insteadOf", "ssh://git@github.com/"])
+        .output()
+        .await;
+    let _ = cmd("git")
+        .args(["config", "--global", "url.https://github.com/.insteadOf", "git@github.com:"])
+        .output()
+        .await;
+
     // Step 2: Install openclaw globally with retry mechanism
     emit_progress(&window, ch, 30, "Installing openclaw...");
 
