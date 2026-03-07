@@ -601,6 +601,52 @@
       </div>
     </section>
 
+    <!-- macOS Install Guide -->
+    <section class="macos-guide" id="macos-guide">
+      <div class="container">
+        <div class="section-header animate-on-scroll">
+          <span class="section-tag">安装指南</span>
+          <h2>macOS 安装说明</h2>
+          <p>首次在 macOS 上安装？按照以下步骤即可顺利完成</p>
+        </div>
+        <div class="guide-steps animate-on-scroll">
+          <div class="guide-step">
+            <div class="guide-step-number">1</div>
+            <div class="guide-step-content">
+              <h3>下载并打开 DMG 文件</h3>
+              <p>根据你的 Mac 芯片类型（Apple Silicon 或 Intel）下载对应的 <code>.dmg</code> 安装包，双击打开。</p>
+            </div>
+          </div>
+          <div class="guide-step">
+            <div class="guide-step-number">2</div>
+            <div class="guide-step-content">
+              <h3>拖拽到 Applications 文件夹</h3>
+              <p>在弹出的窗口中，将 <strong>OpenClawX</strong> 图标拖拽到右侧的 <strong>Applications</strong> 文件夹即可完成安装。</p>
+            </div>
+          </div>
+          <div class="guide-step">
+            <div class="guide-step-number">3</div>
+            <div class="guide-step-content">
+              <h3>解除安全限制（如提示"应用已损坏"）</h3>
+              <p>由于应用未签名，macOS 可能会阻止打开。请打开<strong>终端</strong>（Terminal），运行以下命令：</p>
+              <div class="guide-command">
+                <code id="macosCommand">sudo xattr -cr /Applications/OpenClawX.app</code>
+                <button class="guide-copy-btn" onclick="navigator.clipboard.writeText('sudo xattr -cr /Applications/OpenClawX.app').then(()=>{this.textContent='已复制';setTimeout(()=>{this.textContent='复制'},2000)})" aria-label="Copy command">复制</button>
+              </div>
+              <p class="guide-hint">输入命令后需要输入你的 Mac 登录密码（输入时不会显示字符，这是正常现象）。</p>
+            </div>
+          </div>
+          <div class="guide-step">
+            <div class="guide-step-number">4</div>
+            <div class="guide-step-content">
+              <h3>重新打开应用</h3>
+              <p>执行完命令后，重新双击 <strong>OpenClawX</strong> 即可正常启动使用。</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- OpenClaw Tips CTA -->
     <section class="contact" id="contact">
       <div class="container">

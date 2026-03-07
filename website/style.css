@@ -1262,6 +1262,140 @@ img { max-width: 100%; display: block; }
   transform: translateY(0);
 }
 
+/* ----- macOS Install Guide ----- */
+.macos-guide {
+  padding: 100px 0;
+  background: var(--color-bg-secondary);
+}
+
+.guide-steps {
+  max-width: 700px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.guide-step {
+  display: flex;
+  gap: 20px;
+  padding: 28px 0;
+  border-bottom: 1px solid var(--color-border);
+  transition: all var(--transition-normal);
+}
+
+.guide-step:first-child {
+  padding-top: 0;
+}
+
+.guide-step:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.guide-step:hover {
+  padding-left: 8px;
+}
+
+.guide-step-number {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+  font-size: 16px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border: 2px solid rgba(229, 77, 66, 0.3);
+}
+
+.guide-step-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.guide-step-content h3 {
+  font-size: 17px;
+  font-weight: 700;
+  margin-bottom: 8px;
+  line-height: 40px;
+}
+
+.guide-step-content p {
+  font-size: 14px;
+  color: var(--color-text-secondary);
+  line-height: 1.7;
+  margin-bottom: 4px;
+}
+
+.guide-step-content code {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  background: rgba(229, 77, 66, 0.1);
+  color: var(--color-primary);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.guide-step-content strong {
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.guide-command {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 12px 0;
+  padding: 14px 18px;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow-x: auto;
+}
+
+.guide-command code {
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  color: #FBBF24;
+  background: none;
+  padding: 0;
+  border-radius: 0;
+  user-select: all;
+  white-space: nowrap;
+}
+
+.guide-copy-btn {
+  flex-shrink: 0;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: var(--font-family);
+  color: var(--color-text-secondary);
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+}
+
+.guide-copy-btn:hover {
+  color: var(--color-text);
+  border-color: var(--color-border-light);
+  background: var(--color-bg-card-hover);
+}
+
+.guide-hint {
+  font-size: 13px !important;
+  color: var(--color-text-muted) !important;
+  font-style: italic;
+}
+
 /* ----- Contact Section ----- */
 .contact {
   padding: 80px 0;
@@ -1339,6 +1473,15 @@ img { max-width: 100%; display: block; }
   .download-card h2 { font-size: 28px; }
   .download-buttons { flex-direction: column; align-items: center; }
   .download-btn { width: 100%; max-width: 280px; }
+
+  .macos-guide { padding: 60px 0; }
+  .guide-step { gap: 16px; padding: 20px 0; }
+  .guide-step:hover { padding-left: 0; }
+  .guide-step-number { width: 36px; height: 36px; font-size: 14px; }
+  .guide-step-content h3 { font-size: 15px; line-height: 36px; }
+  .guide-command { flex-direction: column; align-items: stretch; gap: 8px; padding: 12px 14px; }
+  .guide-command code { font-size: 13px; }
+  .guide-copy-btn { align-self: flex-end; }
 
   .contact { padding: 60px 0; }
 
