@@ -4,6 +4,12 @@ use tokio::process::Command;
 
 use super::path_env::expanded_path;
 
+/// Find a program using the expanded PATH (not just the process PATH).
+fn find_program(name: &str) -> Result<std::path::PathBuf, String> {
+    which::which_in(name, Some(expanded_path()), ".")
+        .map_err(|_| format!("{} is not installed or not in PATH", name))
+}
+
 /// Create a tokio Command with the expanded PATH set.
 /// On Windows, wraps through `cmd.exe /C` so `.cmd` scripts (npm.cmd) are found.
 fn cmd(program: &str) -> Command {
@@ -65,7 +71,7 @@ pub struct OpenClawStatus {
 #[tauri::command]
 pub async fn check_openclaw_status() -> Result<OpenClawStatus, String> {
     // Check if openclaw binary exists
-    let installed = which::which("openclaw").is_ok();
+    let installed = find_program("openclaw").is_ok();
 
     // Check if gateway is already running by probing the port
     let running = {
@@ -141,7 +147,7 @@ pub async fn check_openclaw_status() -> Result<OpenClawStatus, String> {
 
 #[tauri::command]
 pub async fn update_openclaw() -> Result<String, String> {
-    which::which("openclaw").map_err(|_| "openclaw is not installed or not in PATH".to_string())?;
+    find_program("openclaw")?;
 
     // Use `openclaw update` as the official update mechanism
     let output = cmd("openclaw")
@@ -571,7 +577,7 @@ async fn ensure_gateway_config() {
 
 #[tauri::command]
 pub async fn launch_openclaw() -> Result<String, String> {
-    which::which("openclaw").map_err(|_| "openclaw is not installed or not in PATH".to_string())?;
+    find_program("openclaw")?;
 
     // If already running, just open browser with token
     if is_gateway_running().await {
@@ -658,7 +664,7 @@ pub async fn launch_openclaw() -> Result<String, String> {
 // Stop the gateway service.
 #[tauri::command]
 pub async fn stop_openclaw_gateway() -> Result<String, String> {
-    which::which("openclaw").map_err(|_| "openclaw is not installed or not in PATH".to_string())?;
+    find_program("openclaw")?;
 
     let output = cmd("openclaw")
         .args(["gateway", "stop"])
@@ -681,7 +687,7 @@ pub async fn stop_openclaw_gateway() -> Result<String, String> {
 // Restart the gateway service.
 #[tauri::command]
 pub async fn restart_openclaw_gateway() -> Result<String, String> {
-    which::which("openclaw").map_err(|_| "openclaw is not installed or not in PATH".to_string())?;
+    find_program("openclaw")?;
 
     // Auto-fix config issues before restarting
     ensure_gateway_config().await;
@@ -713,7 +719,7 @@ pub async fn restart_openclaw_gateway() -> Result<String, String> {
 // Run `openclaw doctor` for diagnostics.
 #[tauri::command]
 pub async fn openclaw_doctor() -> Result<String, String> {
-    which::which("openclaw").map_err(|_| "openclaw is not installed or not in PATH".to_string())?;
+    find_program("openclaw")?;
 
     let output = cmd("openclaw")
         .args(["doctor"])
@@ -730,7 +736,7 @@ pub async fn openclaw_doctor() -> Result<String, String> {
 // Run `openclaw health` to check gateway health.
 #[tauri::command]
 pub async fn openclaw_health() -> Result<String, String> {
-    which::which("openclaw").map_err(|_| "openclaw is not installed or not in PATH".to_string())?;
+    find_program("openclaw")?;
 
     let output = cmd("openclaw")
         .args(["health", "--json"])
@@ -752,7 +758,7 @@ pub async fn openclaw_health() -> Result<String, String> {
 // Open the OpenClaw dashboard (TUI).
 #[tauri::command]
 pub async fn openclaw_dashboard() -> Result<String, String> {
-    which::which("openclaw").map_err(|_| "openclaw is not installed or not in PATH".to_string())?;
+    find_program("openclaw")?;
 
     // `openclaw dashboard` opens the WebUI with auth token
     let auth_url = gateway_url_with_token().await;
@@ -763,7 +769,7 @@ pub async fn openclaw_dashboard() -> Result<String, String> {
 // Repair gateway config and service installation.
 #[tauri::command]
 pub async fn repair_openclaw() -> Result<String, String> {
-    which::which("openclaw").map_err(|_| "openclaw is not installed or not in PATH".to_string())?;
+    find_program("openclaw")?;
 
     let mut steps: Vec<String> = Vec::new();
 
@@ -880,7 +886,7 @@ fn chrono_timestamp() -> String {
 // Check if the Feishu plugin is installed.
 #[tauri::command]
 pub async fn check_feishu_plugin() -> Result<bool, String> {
-    which::which("openclaw").map_err(|_| "openclaw is not installed or not in PATH".to_string())?;
+    find_program("openclaw")?;
 
     let output = cmd("openclaw")
         .args(["plugins", "list"])
@@ -897,7 +903,7 @@ pub async fn check_feishu_plugin() -> Result<bool, String> {
 // Install the Feishu plugin.
 #[tauri::command]
 pub async fn install_feishu_plugin() -> Result<String, String> {
-    which::which("openclaw").map_err(|_| "openclaw is not installed or not in PATH".to_string())?;
+    find_program("openclaw")?;
 
     let output = cmd("openclaw")
         .args(["plugins", "install", "@openclaw/feishu"])
@@ -922,7 +928,7 @@ pub async fn configure_feishu(
     app_id: String,
     app_secret: String,
 ) -> Result<(), String> {
-    which::which("openclaw").map_err(|_| "openclaw is not installed or not in PATH".to_string())?;
+    find_program("openclaw")?;
 
     // Set Feishu config via openclaw config set
     let id_result = cmd("openclaw")

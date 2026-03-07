@@ -22,6 +22,7 @@ export default function NodeInstallPage() {
     setNodeInstallMethod,
     setSelectedMirror,
     setNodeInstallStatus,
+    setNodeVersion,
     addNodeInstallLog,
   } = useInstallStore();
   const { goToStep } = useStepNavigation();
@@ -129,7 +130,13 @@ export default function NodeInstallPage() {
         mirror: selectedMirror.url,
         method: nodeInstallMethod,
       });
-      // Backend already verified node/npm in post_install_verify
+      // Retrieve installed node version for completion summary
+      try {
+        const result = await invoke<NodeVerifyResult>("verify_node_npm");
+        if (result.node_version) {
+          setNodeVersion(result.node_version);
+        }
+      } catch { /* ignore */ }
       setNodeInstallStatus("success");
       addNodeInstallLog({
         timestamp: Date.now(),
@@ -148,6 +155,7 @@ export default function NodeInstallPage() {
     selectedMirror,
     nodeInstallMethod,
     setNodeInstallStatus,
+    setNodeVersion,
     addNodeInstallLog,
     t,
   ]);
