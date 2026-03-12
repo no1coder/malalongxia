@@ -189,3 +189,61 @@ jobs:
           releaseDraft: true
           prerelease: false
           args: --target ${{ matrix.target }}
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Get version from tag
+        id: version
+        run: |
+          echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Download Full edition assets from release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p release-assets
+          gh release download "${{ steps.version.outputs.tag }}" \
+            --pattern "OpenClawX-Full_*" \
+            --repo "${{ github.repository }}" \
+            --dir release-assets
+          echo "=== Downloaded files ==="
+          ls -lh release-assets/
+
+      - name: Install ossutil
+        run: |
+          curl -L -o /usr/local/bin/ossutil \
+            "https://gosspublic.alicdn.com/ossutil/1.7.17/ossutil64"
+          chmod +x /usr/local/bin/ossutil
+
+      - name: Upload to Aliyun OSS
+        env:
+          OSS_ENDPOINT: ${{ secrets.OSS_ENDPOINT }}
+          OSS_ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
+          OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
+          OSS_BUCKET: ${{ secrets.OSS_BUCKET }}
+        run: |
+          for f in release-assets/OpenClawX-Full_*; do
+            filename=$(basename "$f")
+            echo "Uploading $filename ..."
+            ossutil cp "$f" "oss://${OSS_BUCKET}/${filename}" \
+              -e "${OSS_ENDPOINT}" \
+              -i "${OSS_ACCESS_KEY_ID}" \
+              -k "${OSS_ACCESS_KEY_SECRET}" \
+              --force
+          done
+
+      - name: Trigger website version update
+        env:
+          WEBLONGXIA_DEPLOY_TOKEN: ${{ secrets.WEBLONGXIA_DEPLOY_TOKEN }}
+          NEW_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          curl -X POST \
+            -H "Authorization: token ${WEBLONGXIA_DEPLOY_TOKEN}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/no1coder/weblongxia/dispatches" \
+            -d "{\"event_type\":\"new-release\",\"client_payload\":{\"version\":\"${NEW_VERSION}\"}}"
+          echo "Triggered weblongxia update for v${NEW_VERSION}"
