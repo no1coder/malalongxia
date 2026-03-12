@@ -1044,6 +1044,8 @@ fn classify_install_error(err: &str) -> &'static str {
         "Disk full. Free up disk space and try again."
     } else if lower.contains("etarget") || lower.contains("enoent") {
         "Package not found. The npm registry may be temporarily unavailable."
+    } else if lower.contains("ssh") || lower.contains("git connection error") || lower.contains("ls-remote") || lower.contains("could not read from remote") {
+        "Git SSH connection failed (port 22 blocked). This is a known issue in China — the installer will retry with HTTPS rewriting enabled."
     } else if lower.contains("network") || lower.contains("etimedout") || lower.contains("econnrefused") || lower.contains("econnreset") {
         "Network error. Check your internet connection or try a different mirror."
     } else if lower.contains("node-gyp") || lower.contains("cmake") || lower.contains("msbuild") {
@@ -1104,13 +1106,18 @@ pub async fn install_openclaw(mirror: String, app: tauri::AppHandle, window: Win
     emit_progress(&window, ch, 10, "Preparing installation...");
     emit_log(&window, ch, &format!("Using npm registry: {}", registry));
 
-    // Build git config env vars to avoid modifying user's global gitconfig.
-    // GIT_CONFIG_COUNT + GIT_CONFIG_KEY_N + GIT_CONFIG_VALUE_N let us set
-    // temporary config for child processes only.
+    // Build git config entries to rewrite SSH → HTTPS so users without SSH
+    // keys (or with port 22 blocked) aren't blocked by git deps like libsignal-node.
+    // NOTE: GIT_CONFIG_COUNT/KEY/VALUE requires Git 2.31+. We also write a
+    // temp gitconfig file and set GIT_CONFIG_GLOBAL so older Git versions work.
+    //
+    // Each insteadOf key must be unique; Git treats duplicate keys as
+    // separate entries only when using the env-var protocol (one rule per slot).
     let mut git_config_entries: Vec<(String, String)> = vec![
-        // Rewrite SSH → HTTPS so users without SSH keys aren't blocked
+        // Rewrite ssh://git@github.com/ → https://github.com/
         ("url.https://github.com/.insteadOf".to_string(), "ssh://git@github.com/".to_string()),
-        ("url.https://github.com/.insteadOf".to_string(), "git@github.com:".to_string()),
+        // Rewrite git@github.com: → https://github.com/ (SCP-style shorthand)
+        ("url.https://github.com/.insteadOfScp".to_string(), "git@github.com:".to_string()),
     ];
 
     // Test direct GitHub connectivity (many Chinese users can't reach it)
@@ -1164,15 +1171,39 @@ pub async fn install_openclaw(mirror: String, app: tauri::AppHandle, window: Win
 
         emit_log(&window, ch, "Running: npm install -g openclaw@latest");
 
+        // Write a temporary gitconfig so SSH→HTTPS rewriting works on all Git versions.
+        // GIT_CONFIG_COUNT/KEY/VALUE env vars require Git 2.31+; GIT_CONFIG_GLOBAL
+        // works on any Git version and takes precedence over the user's global config.
+        let tmp_gitconfig = std::env::temp_dir().join("malalongxia_npm_install.gitconfig");
+        {
+            // The first two entries always target https://github.com/ (SSH rewrites).
+            // Any extra entry added later is a mirror rewrite block.
+            let mut lines = String::new();
+            lines.push_str("[url \"https://github.com/\"]\n");
+            lines.push_str(&format!("\tinsteadOf = {}\n", "ssh://git@github.com/"));
+            lines.push_str(&format!("\tinsteadOf = {}\n", "git@github.com:"));
+            // Append mirror rewrite blocks appended dynamically after connectivity check
+            for (key, value) in git_config_entries.iter().skip(2) {
+                // key is like "url.MIRROR_URL.insteadOf"
+                if let Some(mirror_url) = key.strip_prefix("url.").and_then(|s| s.strip_suffix(".insteadOf")) {
+                    lines.push_str(&format!("[url \"{}\"]\n", mirror_url));
+                    lines.push_str(&format!("\tinsteadOf = {}\n", value));
+                }
+            }
+            let _ = std::fs::write(&tmp_gitconfig, lines);
+        }
+
         let mut npm_cmd = cmd("npm");
         npm_cmd
             .args(["install", "-g", "openclaw@latest", "--registry", registry])
             .env("SHARP_IGNORE_GLOBAL_LIBVIPS", "1")
             // Skip node-llama-cpp native compilation — most users use API mode,
             // not local models. This avoids cmake/xpm/Vulkan build failures.
-            .env("NODE_LLAMA_CPP_SKIP_DOWNLOAD", "true");
+            .env("NODE_LLAMA_CPP_SKIP_DOWNLOAD", "true")
+            // Point Git at our temp config (works on all Git versions)
+            .env("GIT_CONFIG_GLOBAL", &tmp_gitconfig);
 
-        // Pass git config via environment variables (not global gitconfig)
+        // Also pass via GIT_CONFIG_COUNT/KEY/VALUE for Git 2.31+ (belt-and-suspenders)
         npm_cmd.env("GIT_CONFIG_COUNT", git_config_entries.len().to_string());
         for (i, (key, value)) in git_config_entries.iter().enumerate() {
             npm_cmd.env(format!("GIT_CONFIG_KEY_{}", i), key);
