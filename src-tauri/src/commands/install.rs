@@ -742,24 +742,39 @@ pub async fn install_node(mirror: String, method: String, app: tauri::AppHandle,
         emit_progress(&window, ch, 10, "Installing nvm...");
         emit_log(&window, ch, "Installing nvm (Node Version Manager)...");
 
-        let nvm_install_script = match os {
-            "macos" | "linux" => {
-                // Use gitee mirror for nvm script in China
-                "https://gitee.com/mirrors/nvm/raw/master/install.sh"
+        if !matches!(os, "macos" | "linux") {
+            return Err(format!("nvm installation is not supported on {}", os));
+        }
+
+        // Try nvm install script sources in order.
+        // Gitee mirror is preferred for Chinese users; raw.githubusercontent.com
+        // is the official source and serves as a fallback when Gitee is unavailable.
+        let nvm_script_sources = [
+            "https://gitee.com/mirrors/nvm/raw/master/install.sh",
+            "https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh",
+        ];
+
+        let mut nvm_installed = false;
+        for nvm_script_url in &nvm_script_sources {
+            emit_log(&window, ch, &format!("Trying nvm install script: {}", nvm_script_url));
+            let child = cmd("bash")
+                .arg("-c")
+                .arg(format!("curl -fsSL {} | bash", nvm_script_url))
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .spawn()
+                .map_err(|e| format!("Failed to start nvm install: {}", e))?;
+
+            match stream_child_output(&window, ch, child).await {
+                Ok(()) => { nvm_installed = true; break; }
+                Err(e) => {
+                    emit_log(&window, ch, &format!("nvm script {} failed: {}", nvm_script_url, e));
+                }
             }
-            _ => return Err(format!("nvm installation is not supported on {}", os)),
-        };
-
-        // Download and run nvm install script
-        let child = cmd("bash")
-            .arg("-c")
-            .arg(format!("curl -fsSL {} | bash", nvm_install_script))
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
-            .spawn()
-            .map_err(|e| format!("Failed to start nvm install: {}", e))?;
-
-        stream_child_output(&window, ch, child).await?;
+        }
+        if !nvm_installed {
+            return Err("Failed to download nvm install script from all sources.".to_string());
+        }
         emit_progress(&window, ch, 50, "nvm installed, installing Node.js v22...");
 
         // Source nvm and install node LTS using the selected mirror
@@ -1046,6 +1061,10 @@ fn classify_install_error(err: &str) -> &'static str {
         "Package not found. The npm registry may be temporarily unavailable."
     } else if lower.contains("ssh") || lower.contains("git connection error") || lower.contains("ls-remote") || lower.contains("could not read from remote") {
         "Git SSH connection failed (port 22 blocked). This is a known issue in China — the installer will retry with HTTPS rewriting enabled."
+    } else if lower.contains("codeload.github.com") || (lower.contains("etimedout") && lower.contains("github")) {
+        "GitHub tarball download timed out (codeload.github.com unreachable). Retrying with --omit=optional to skip optional GitHub-hosted dependencies."
+    } else if lower.contains("getaddrinfo") || lower.contains("enotfound") || (lower.contains("dns") && lower.contains("fail")) {
+        "DNS resolution failed. Try changing your DNS to 119.29.29.29 (DNSPod) or 223.5.5.5 (Alibaba) and retry."
     } else if lower.contains("network") || lower.contains("etimedout") || lower.contains("econnrefused") || lower.contains("econnreset") {
         "Network error. Check your internet connection or try a different mirror."
     } else if lower.contains("node-gyp") || lower.contains("cmake") || lower.contains("msbuild") {
@@ -1055,6 +1074,17 @@ fn classify_install_error(err: &str) -> &'static str {
     } else {
         ""
     }
+}
+
+// Returns true if the error is caused by a GitHub tarball download failure
+// (e.g. codeload.github.com ETIMEDOUT). In this case retrying with
+// --omit=optional is the best fallback since libsignal-node and similar
+// deps are declared as optional or devDependencies in the upstream package.
+fn is_github_tarball_error(err: &str) -> bool {
+    let lower = err.to_lowercase();
+    lower.contains("codeload.github.com")
+        || (lower.contains("etimedout") && lower.contains("github"))
+        || (lower.contains("network request") && lower.contains("github"))
 }
 
 #[tauri::command]
@@ -1120,10 +1150,11 @@ pub async fn install_openclaw(mirror: String, app: tauri::AppHandle, window: Win
         ("url.https://github.com/.insteadOfScp".to_string(), "git@github.com:".to_string()),
     ];
 
-    // Test direct GitHub connectivity (many Chinese users can't reach it)
+    // Test direct GitHub connectivity (many Chinese users can't reach it).
+    // Use a generous 15s timeout — GFW may cause slow-but-eventual responses.
     let github_ok = reqwest::Client::new()
         .head("https://github.com")
-        .timeout(std::time::Duration::from_secs(8))
+        .timeout(std::time::Duration::from_secs(15))
         .send()
         .await
         .map(|r| r.status().is_success() || r.status().is_redirection())
@@ -1131,18 +1162,20 @@ pub async fn install_openclaw(mirror: String, app: tauri::AppHandle, window: Win
 
     if !github_ok {
         emit_log(&window, ch, "GitHub unreachable, configuring mirror proxy...");
+        // Ordered by reliability for Chinese users. github.com is intentionally
+        // excluded — it's not a mirror and would just fail again.
         let mirrors = [
-            "https://gh-proxy.com/https://github.com/",
-            "https://github.com/",
             "https://ghfast.top/https://github.com/",
+            "https://gh-proxy.com/https://github.com/",
             "https://ghproxy.net/https://github.com/",
             "https://mirror.ghproxy.com/https://github.com/",
             "https://github.moeyy.xyz/https://github.com/",
+            "https://hub.gitmirror.com/https://github.com/",
         ];
         for mirror_url in &mirrors {
             let ok = reqwest::Client::new()
                 .head(*mirror_url)
-                .timeout(std::time::Duration::from_secs(5))
+                .timeout(std::time::Duration::from_secs(8))
                 .send()
                 .await
                 .is_ok();
@@ -1162,6 +1195,9 @@ pub async fn install_openclaw(mirror: String, app: tauri::AppHandle, window: Win
 
     let max_retries = 3;
     let mut last_error = String::new();
+    // Track whether a previous attempt hit a GitHub tarball timeout so we can
+    // escalate to --omit=optional on the next retry.
+    let mut github_tarball_failed = false;
     for attempt in 1..=max_retries {
         if attempt > 1 {
             emit_log(&window, ch, &format!("Retry attempt {}/{}...", attempt, max_retries));
@@ -1169,7 +1205,18 @@ pub async fn install_openclaw(mirror: String, app: tauri::AppHandle, window: Win
             tokio::time::sleep(std::time::Duration::from_secs(3)).await;
         }
 
-        emit_log(&window, ch, "Running: npm install -g openclaw@latest");
+        // Build the base npm install args.
+        // --omit=optional is used when GitHub is unreachable (including on the
+        // first attempt) because optional deps like libsignal-node reference
+        // codeload.github.com tarballs directly — git url rewrites don't help
+        // for npm's HTTP tarball fetching. Skipping optional deps avoids the
+        // ETIMEDOUT entirely without affecting core OpenClaw functionality.
+        let omit_optional = !github_ok || github_tarball_failed;
+        let log_suffix = if omit_optional { " --omit=optional" } else { "" };
+        emit_log(&window, ch, &format!("Running: npm install -g openclaw@latest{}", log_suffix));
+        if omit_optional {
+            emit_log(&window, ch, "Note: --omit=optional skips GitHub-hosted optional dependencies (e.g. libsignal-node) that are unreachable from China.");
+        }
 
         // Write a temporary gitconfig so SSH→HTTPS rewriting works on all Git versions.
         // GIT_CONFIG_COUNT/KEY/VALUE env vars require Git 2.31+; GIT_CONFIG_GLOBAL
@@ -1193,9 +1240,16 @@ pub async fn install_openclaw(mirror: String, app: tauri::AppHandle, window: Win
             let _ = std::fs::write(&tmp_gitconfig, lines);
         }
 
+        let mut npm_args = vec!["install", "-g", "openclaw@latest", "--registry", registry];
+        // --omit=optional skips optional deps that reference GitHub tarballs directly.
+        // Used as a fallback when GitHub (codeload.github.com) is not reachable.
+        if omit_optional {
+            npm_args.push("--omit=optional");
+        }
+
         let mut npm_cmd = cmd("npm");
         npm_cmd
-            .args(["install", "-g", "openclaw@latest", "--registry", registry])
+            .args(&npm_args)
             .env("SHARP_IGNORE_GLOBAL_LIBVIPS", "1")
             // Skip node-llama-cpp native compilation — most users use API mode,
             // not local models. This avoids cmake/xpm/Vulkan build failures.
@@ -1226,6 +1280,11 @@ pub async fn install_openclaw(mirror: String, app: tauri::AppHandle, window: Win
                 emit_log(&window, ch, &format!("Install attempt {} failed: {}", attempt, e));
                 if !error_hint.is_empty() {
                     emit_log(&window, ch, &format!("Hint: {}", error_hint));
+                }
+                // Remember if this attempt hit a GitHub tarball timeout so the
+                // next retry can use --omit=optional as a fallback strategy.
+                if is_github_tarball_error(&e) {
+                    github_tarball_failed = true;
                 }
                 last_error = e;
                 // Clean up before retry
