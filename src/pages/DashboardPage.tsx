@@ -18,6 +18,7 @@ import {
   Stethoscope,
   Wrench,
   MessageSquare,
+  Trash2,
 } from "lucide-react";
 import "./DashboardPage.css";
 
@@ -32,6 +33,7 @@ interface DashboardPageProps {
   readonly onReinstall: () => void;
   readonly onReconfigureApi: () => void;
   readonly onConfigureFeishu: () => void;
+  readonly onUninstall: () => void;
 }
 
 interface OpenClawStatus {
@@ -52,6 +54,7 @@ export default function DashboardPage({
   onReinstall,
   onReconfigureApi,
   onConfigureFeishu,
+  onUninstall,
 }: DashboardPageProps) {
   const { t } = useTranslation();
 
@@ -84,6 +87,14 @@ export default function DashboardPage({
 
   // Reinstall confirm dialog (window.confirm doesn't work in macOS WKWebView)
   const [showReinstallConfirm, setShowReinstallConfirm] = useState(false);
+
+  // Uninstall
+  const [uninstallStatus, setUninstallStatus] = useState<"idle" | "uninstalling" | "success" | "error">("idle");
+  const [uninstallMessage, setUninstallMessage] = useState<string | null>(null);
+  const [showUninstallConfirm, setShowUninstallConfirm] = useState(false);
+  const [uninstallOpenclaw, setUninstallOpenclaw] = useState(true);
+  const [uninstallNode, setUninstallNode] = useState(false);
+  const [uninstallGit, setUninstallGit] = useState(false);
 
   // On mount, re-check gateway status
   const statusCheckDone = useRef(false);
@@ -187,6 +198,27 @@ export default function DashboardPage({
       setRepairOutput(String(err));
     }
   }, []);
+
+  const handleUninstall = useCallback(async () => {
+    setUninstallMessage(null);
+    setUninstallStatus("uninstalling");
+    try {
+      await invoke("uninstall_components", {
+        uninstallOpenclaw,
+        uninstallNode,
+        uninstallGit,
+      });
+      setUninstallStatus("success");
+      setUninstallMessage(t("dashboard.uninstallSuccess"));
+      // Transition back to installer after a brief delay
+      setTimeout(onUninstall, 1500);
+    } catch (err) {
+      setUninstallStatus("error");
+      const raw = String(err);
+      const colonIdx = raw.indexOf(": ");
+      setUninstallMessage(colonIdx !== -1 ? raw.slice(colonIdx + 2) : raw);
+    }
+  }, [t, onUninstall, uninstallOpenclaw, uninstallNode, uninstallGit]);
 
   const handleTips = useCallback(() => {
     openUrl(TIPS_URL);
@@ -413,7 +445,30 @@ export default function DashboardPage({
             <RotateCcw size={16} />
             {t("dashboard.reinstall")}
           </button>
+
+          <button
+            className="dashboard-btn dashboard-btn-danger"
+            onClick={() => setShowUninstallConfirm(true)}
+            disabled={uninstallStatus === "uninstalling" || uninstallStatus === "success"}
+          >
+            {uninstallStatus === "uninstalling" ? <Loader2 size={16} className="dashboard-spin" /> : <Trash2 size={16} />}
+            {uninstallStatus === "uninstalling" ? t("dashboard.uninstalling") : t("dashboard.uninstall")}
+          </button>
         </div>
+
+        {/* Uninstall feedback */}
+        {uninstallStatus === "success" && uninstallMessage && (
+          <div className="dashboard-feedback dashboard-feedback-success">
+            <CheckCircle2 size={14} />
+            <span>{uninstallMessage}</span>
+          </div>
+        )}
+        {uninstallStatus === "error" && uninstallMessage && (
+          <div className="dashboard-feedback dashboard-feedback-error">
+            <AlertCircle size={14} />
+            <span>{uninstallMessage}</span>
+          </div>
+        )}
       </div>
 
       {/* Reinstall confirm dialog */}
@@ -437,6 +492,60 @@ export default function DashboardPage({
                 }}
               >
                 {t("dashboard.reinstall")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Uninstall confirm dialog */}
+      {showUninstallConfirm && (
+        <div className="dashboard-confirm-overlay" onClick={() => setShowUninstallConfirm(false)}>
+          <div className="dashboard-confirm-dialog" onClick={(e) => e.stopPropagation()}>
+            <Trash2 size={24} className="dashboard-confirm-icon" />
+            <p className="dashboard-confirm-text">{t("dashboard.uninstallConfirm")}</p>
+            <div className="dashboard-uninstall-options">
+              <label className="dashboard-uninstall-option">
+                <input
+                  type="checkbox"
+                  checked={uninstallOpenclaw}
+                  onChange={(e) => setUninstallOpenclaw(e.target.checked)}
+                />
+                <span>{t("dashboard.uninstallOptionOpenclaw")}</span>
+              </label>
+              <label className="dashboard-uninstall-option">
+                <input
+                  type="checkbox"
+                  checked={uninstallNode}
+                  onChange={(e) => setUninstallNode(e.target.checked)}
+                />
+                <span>{t("dashboard.uninstallOptionNode")}</span>
+              </label>
+              <label className="dashboard-uninstall-option">
+                <input
+                  type="checkbox"
+                  checked={uninstallGit}
+                  onChange={(e) => setUninstallGit(e.target.checked)}
+                />
+                <span>{t("dashboard.uninstallOptionGit")}</span>
+              </label>
+            </div>
+            <div className="dashboard-confirm-actions">
+              <button
+                className="dashboard-btn dashboard-btn-secondary"
+                onClick={() => setShowUninstallConfirm(false)}
+              >
+                {t("common.cancel")}
+              </button>
+              <button
+                className="dashboard-btn dashboard-btn-danger"
+                disabled={!uninstallOpenclaw && !uninstallNode && !uninstallGit}
+                onClick={() => {
+                  setShowUninstallConfirm(false);
+                  handleUninstall();
+                }}
+              >
+                {t("dashboard.uninstall")}
               </button>
             </div>
           </div>

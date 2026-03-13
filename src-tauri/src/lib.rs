@@ -8,6 +8,7 @@ use commands::config::{
     test_api_connection, update_openclaw,
 };
 use commands::environment::check_environment;
+use commands::config::uninstall_components;
 use commands::install::{install_node, install_openclaw, verify_node_npm};
 use commands::mirror::{fetch_mirror_config, test_mirror_latency, test_mirrors};
 
@@ -41,6 +42,7 @@ pub fn run() {
             install_feishu_plugin,
             configure_feishu,
             check_app_update,
+            uninstall_components,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

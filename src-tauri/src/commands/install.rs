@@ -337,6 +337,16 @@ async fn download_once(
         .await
         .map_err(|e| format!("Flush error: {}", e))?;
 
+    // Reject suspiciously small files (< 1 MB) — these are almost certainly
+    // error pages or truncated transfers, not valid Node.js / MinGit archives.
+    if downloaded < 1_048_576 {
+        return Err(format!(
+            "Download produced only {} bytes (expected at least 1 MB). \
+             The server may have returned an error page or the transfer was truncated.",
+            downloaded
+        ));
+    }
+
     let downloaded_mb = downloaded as f64 / 1_048_576.0;
     emit_log(window, channel, &format!("Download complete: {:.1}MB", downloaded_mb));
 
@@ -387,7 +397,21 @@ async fn stream_child_output(
 
     match result {
         Err(_) => {
-            // Timeout elapsed — kill the child process to avoid orphan
+            // Timeout elapsed. On Windows, kill the entire process tree (cmd.exe → npm → node
+            // → postinstall scripts) using `taskkill /T /F /PID`. A plain Child::kill() only
+            // terminates the direct process (cmd.exe), leaving npm/node as orphans that hold
+            // port 18789 or npm lock files. On Unix, kill the process group.
+            // Use tokio::process::Command (async) to avoid blocking the tokio executor.
+            #[cfg(windows)]
+            if let Some(pid) = child.id() {
+                let _ = Command::new("taskkill")
+                    .args(["/T", "/F", "/PID", &pid.to_string()])
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .status()
+                    .await;
+            }
+            #[cfg(not(windows))]
             let _ = child.kill().await;
             Err("Process timed out after 10 minutes".to_string())
         }
@@ -480,6 +504,29 @@ async fn install_portable_git(window: &Window, channel: &str, app: &tauri::AppHa
 
             emit_log(window, channel, &format!("Extracting MinGit to {} ...", git_dir.display()));
 
+            // Clean up any previous (possibly corrupt) MinGit installation before extracting.
+            // Retry up to 3 times to handle Windows Defender file locks.
+            if git_dir.exists() {
+                let dir_str = git_dir.to_string_lossy().to_string();
+                for attempt in 1u8..=3 {
+                    let ok = Command::new("cmd")
+                        .args(["/C", "rmdir", "/s", "/q", &dir_str])
+                        .stdout(std::process::Stdio::null())
+                        .stderr(std::process::Stdio::null())
+                        .status()
+                        .await
+                        .map(|s| s.success())
+                        .unwrap_or(false);
+                    if ok || !git_dir.exists() { break; }
+                    if attempt < 3 {
+                        emit_log(window, channel, &format!(
+                            "MinGit dir cleanup attempt {}/3 failed (file lock?), retrying...", attempt
+                        ));
+                        tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+                    }
+                }
+            }
+
             // Create destination dir before extraction
             let _ = tokio::fs::create_dir_all(&git_dir).await;
 
@@ -513,7 +560,7 @@ async fn install_portable_git(window: &Window, channel: &str, app: &tauri::AppHa
                     let mut ps_child = None;
                     for ps in &ps_paths {
                         if let Ok(c) = Command::new(ps)
-                            .args(["-NoProfile", "-Command", &extract_cmd])
+                            .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", &extract_cmd])
                             .stdout(std::process::Stdio::piped())
                             .stderr(std::process::Stdio::piped())
                             .spawn()
@@ -527,6 +574,24 @@ async fn install_portable_git(window: &Window, channel: &str, app: &tauri::AppHa
                     })?;
                     stream_child_output(window, channel, child).await?;
                 }
+            }
+
+            // Verify git.exe was actually extracted before updating PATH.
+            // Retry up to 5 times with short delays — Windows Defender may still
+            // be scanning the newly extracted files, causing transient file-not-found.
+            let git_exe = git_dir.join("cmd").join("git.exe");
+            let mut git_found = git_exe.exists();
+            for _ in 0..4 {
+                if git_found { break; }
+                tokio::time::sleep(std::time::Duration::from_millis(800)).await;
+                git_found = git_exe.exists();
+            }
+            if !git_found {
+                return Err(format!(
+                    "MinGit extraction failed: git.exe not found in {}. \
+                     The archive may be corrupt — please retry.",
+                    git_dir.display()
+                ));
             }
 
             // Add MinGit to current process PATH so subsequent commands find git
@@ -959,12 +1024,31 @@ pub async fn install_node(mirror: String, method: String, app: tauri::AppHandle,
                     .join("Programs")
                     .join("nodejs");
 
-                // Clean up existing directory if present
+                // Clean up existing directory if present.
+                // Retry up to 3 times with a short delay — Windows Defender / antivirus
+                // file scanning can briefly lock files and cause rmdir to fail.
                 if node_dir.exists() {
-                    let _ = Command::new("cmd")
-                        .args(["/C", "rmdir", "/s", "/q", &node_dir.to_string_lossy()])
-                        .output()
-                        .await;
+                    let dir_str = node_dir.to_string_lossy().to_string();
+                    let mut removed = false;
+                    for attempt in 1u8..=3 {
+                        let status = Command::new("cmd")
+                            .args(["/C", "rmdir", "/s", "/q", &dir_str])
+                            .stdout(std::process::Stdio::null())
+                            .stderr(std::process::Stdio::null())
+                            .status()
+                            .await;
+                        if status.map(|s| s.success()).unwrap_or(false) || !node_dir.exists() {
+                            removed = true;
+                            break;
+                        }
+                        emit_log(&window, ch, &format!(
+                            "Directory cleanup attempt {}/3 failed (file lock?), retrying...", attempt
+                        ));
+                        tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+                    }
+                    if !removed && node_dir.exists() {
+                        emit_log(&window, ch, "Warning: could not fully remove old nodejs dir; proceeding anyway.");
+                    }
                 }
 
                 let _ = tokio::fs::create_dir_all(&node_dir).await;
@@ -1005,7 +1089,7 @@ pub async fn install_node(mirror: String, method: String, app: tauri::AppHandle,
                         let mut ps_child = None;
                         for ps in &ps_paths {
                             if let Ok(c) = Command::new(ps)
-                                .args(["-NoProfile", "-Command", &extract_cmd])
+                                .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", &extract_cmd])
                                 .stdout(std::process::Stdio::piped())
                                 .stderr(std::process::Stdio::piped())
                                 .spawn()
@@ -1021,23 +1105,59 @@ pub async fn install_node(mirror: String, method: String, app: tauri::AppHandle,
                     }
                 }
 
+                // Verify that node.exe was actually extracted before updating PATH.
+                // tar and PowerShell can both exit 0 while producing no output (e.g. bad zip).
+                // Retry up to 5 times — Windows Defender may still be scanning extracted files.
+                let node_exe = node_dir.join("node.exe");
+                let mut node_found = node_exe.exists();
+                for _ in 0..4 {
+                    if node_found { break; }
+                    tokio::time::sleep(std::time::Duration::from_millis(800)).await;
+                    node_found = node_exe.exists();
+                }
+                if !node_found {
+                    return Err(format!(
+                        "Node.js extraction failed: node.exe not found in {}. \
+                         The archive may be corrupt — please retry.",
+                        node_dir.display()
+                    ));
+                }
+
                 // Add to current process PATH
                 let current_path = std::env::var("PATH").unwrap_or_default();
                 std::env::set_var("PATH", format!("{};{}", node_dir.display(), current_path));
 
-                // Also add npm global directory
+                // Persist node_dir and npm global bin to user PATH in Windows registry in one call
+                // so it survives app restart. Batch into a single append to avoid TOCTOU races.
+                let node_dir_str = node_dir.to_string_lossy().to_string();
                 let appdata = std::env::var("APPDATA").unwrap_or_default();
-                if !appdata.is_empty() {
+                let npm_global_opt = if !appdata.is_empty() {
                     let npm_global = std::path::PathBuf::from(&appdata).join("npm");
                     let _ = tokio::fs::create_dir_all(&npm_global).await;
                     let current_path = std::env::var("PATH").unwrap_or_default();
                     if !current_path.contains(&npm_global.to_string_lossy().to_string()) {
                         std::env::set_var("PATH", format!("{};{}", npm_global.display(), current_path));
                     }
-                }
+                    Some(npm_global.to_string_lossy().to_string())
+                } else {
+                    None
+                };
+                // Append both directories in a single registry write to avoid race conditions
+                let dirs_to_persist: Vec<&str> = {
+                    let mut v: Vec<&str> = vec![&node_dir_str];
+                    if let Some(ref npm_str) = npm_global_opt {
+                        v.push(npm_str);
+                    }
+                    v
+                };
+                append_dirs_to_user_path_registry(&dirs_to_persist);
 
                 // Cleanup temp file
                 let _ = tokio::fs::remove_file(&tmp_path).await;
+
+                // Invalidate npm prefix cache so the next expanded_path() call
+                // discovers the newly installed npm global bin directory.
+                super::path_env::invalidate_npm_prefix_cache();
 
                 emit_progress(&window, ch, 90, "Verifying Node.js...");
                 post_install_verify(&window, ch).await?;
@@ -1074,6 +1194,106 @@ fn classify_install_error(err: &str) -> &'static str {
     } else {
         ""
     }
+}
+
+/// Read the current user PATH value from the Windows registry (HKCU\Environment).
+/// Returns the raw value string, or an empty string if not set.
+#[cfg(windows)]
+fn read_user_path_from_registry() -> String {
+    use std::process::Command as StdCommand;
+    StdCommand::new("reg")
+        .args(["query", r"HKCU\Environment", "/v", "Path"])
+        .output()
+        .ok()
+        .and_then(|o| {
+            let out = String::from_utf8_lossy(&o.stdout).to_string();
+            out.lines()
+                .find(|l| l.contains("REG_"))
+                .and_then(|line| {
+                    if let Some(pos) = line.find("REG_EXPAND_SZ") {
+                        Some(line[pos + "REG_EXPAND_SZ".len()..].trim().to_string())
+                    } else if let Some(pos) = line.find("REG_SZ") {
+                        Some(line[pos + "REG_SZ".len()..].trim().to_string())
+                    } else {
+                        None
+                    }
+                })
+        })
+        .unwrap_or_default()
+}
+
+/// Append multiple directories to the current user's PATH in the Windows registry
+/// (HKCU\Environment) in a single read-modify-write cycle. This avoids TOCTOU races
+/// that would occur if each directory were appended in a separate call.
+/// Deduplicates case-insensitively. Uses REG_EXPAND_SZ to preserve %VAR% references.
+#[cfg(windows)]
+fn append_dirs_to_user_path_registry(new_dirs: &[&str]) {
+    use std::process::Command as StdCommand;
+
+    let existing = read_user_path_from_registry();
+    let lower_existing = existing.to_lowercase();
+
+    // Collect dirs that are not already present
+    let mut to_add: Vec<&str> = new_dirs
+        .iter()
+        .filter(|&&d| {
+            let lower_d = d.to_lowercase();
+            !lower_existing.split(';').any(|e| e.trim() == lower_d.as_str())
+        })
+        .copied()
+        .collect();
+
+    if to_add.is_empty() {
+        return; // All directories already in PATH
+    }
+
+    let new_path = if existing.is_empty() {
+        to_add.join(";")
+    } else {
+        let mut parts = vec![existing.as_str()];
+        parts.append(&mut to_add);
+        parts.join(";")
+    };
+
+    // Write back using REG_EXPAND_SZ to preserve any existing %VAR% references
+    let _ = StdCommand::new("reg")
+        .args([
+            "add",
+            r"HKCU\Environment",
+            "/v",
+            "Path",
+            "/t",
+            "REG_EXPAND_SZ",
+            "/d",
+            &new_path,
+            "/f",
+        ])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .output();
+
+    // Notify the system that environment variables have changed so Explorer and
+    // other processes pick up the new PATH without requiring a logoff.
+    // SendMessageTimeout(HWND_BROADCAST=0xFFFF, WM_SETTINGCHANGE=0x001A, 0, "Environment")
+    // NOTE: Do NOT call SetEnvironmentVariable with $null here — that would delete the PATH.
+    let _ = StdCommand::new("powershell")
+        .args([
+            "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command",
+            "Add-Type -TypeDefinition 'using System;using System.Runtime.InteropServices;\
+             public class Win32{[DllImport(\"user32.dll\",SetLastError=true)]public static extern \
+             IntPtr SendMessageTimeout(IntPtr h,uint m,UIntPtr w,string l,uint f,uint t,out IntPtr r);}'; \
+             $r=[IntPtr]::Zero; \
+             [Win32]::SendMessageTimeout([IntPtr]0xffff,0x001a,[UIntPtr]::Zero,'Environment',2,5000,[ref]$r) | Out-Null"
+        ])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .ok(); // fire-and-forget; failure is non-fatal
+}
+
+#[cfg(not(windows))]
+fn append_dirs_to_user_path_registry(_new_dirs: &[&str]) {
+    // No-op on non-Windows platforms
 }
 
 // Returns true if the error is caused by a GitHub tarball download failure
@@ -1193,6 +1413,10 @@ pub async fn install_openclaw(mirror: String, app: tauri::AppHandle, window: Win
     // Step 2: Install openclaw globally with retry mechanism
     emit_progress(&window, ch, 20, "Installing openclaw...");
 
+    // Snapshot the expanded PATH once before the retry loop so we don't repeatedly
+    // invoke `npm config get prefix` (a blocking subprocess) inside each cmd() call.
+    let path_snapshot = expanded_path();
+
     let max_retries = 3;
     let mut last_error = String::new();
     // Track whether a previous attempt hit a GitHub tarball timeout so we can
@@ -1212,7 +1436,7 @@ pub async fn install_openclaw(mirror: String, app: tauri::AppHandle, window: Win
         // for npm's HTTP tarball fetching. Skipping optional deps avoids the
         // ETIMEDOUT entirely without affecting core OpenClaw functionality.
         let omit_optional = !github_ok || github_tarball_failed;
-        let log_suffix = if omit_optional { " --omit=optional" } else { "" };
+        let log_suffix = if omit_optional { " --omit=optional --foreground-scripts" } else { " --foreground-scripts" };
         emit_log(&window, ch, &format!("Running: npm install -g openclaw@latest{}", log_suffix));
         if omit_optional {
             emit_log(&window, ch, "Note: --omit=optional skips GitHub-hosted optional dependencies (e.g. libsignal-node) that are unreachable from China.");
@@ -1246,8 +1470,26 @@ pub async fn install_openclaw(mirror: String, app: tauri::AppHandle, window: Win
         if omit_optional {
             npm_args.push("--omit=optional");
         }
+        // --foreground-scripts keeps postinstall output in the current process stdout/stderr
+        // instead of spawning a detached console window on Windows, which would cause
+        // stream_child_output to time out waiting for a child that never closes its pipes.
+        npm_args.push("--foreground-scripts");
 
-        let mut npm_cmd = cmd("npm");
+        // Use the pre-snapshotted PATH to avoid calling expanded_path() (which may
+        // run `npm config get prefix`) on every retry iteration.
+        #[cfg(windows)]
+        let mut npm_cmd = {
+            let mut c = Command::new("cmd");
+            c.args(["/C", "npm"]);
+            c.env("PATH", &path_snapshot);
+            c
+        };
+        #[cfg(not(windows))]
+        let mut npm_cmd = {
+            let mut c = Command::new("npm");
+            c.env("PATH", &path_snapshot);
+            c
+        };
         npm_cmd
             .args(&npm_args)
             .env("SHARP_IGNORE_GLOBAL_LIBVIPS", "1")
@@ -1291,31 +1533,75 @@ pub async fn install_openclaw(mirror: String, app: tauri::AppHandle, window: Win
                 if attempt < max_retries {
                     // Remove leftover openclaw dir to avoid EPERM file lock issues on Windows
                     emit_log(&window, ch, "Cleaning up before retry...");
-                    let npm_prefix = cmd("npm")
-                        .args(["config", "get", "prefix"])
-                        .output()
-                        .await
-                        .ok()
-                        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-                        .unwrap_or_default();
+                    // Reuse path_snapshot here to avoid calling expanded_path() / npm config get prefix again
+                    #[cfg(windows)]
+                    let npm_prefix = {
+                        Command::new("cmd")
+                            .args(["/C", "npm", "config", "get", "prefix"])
+                            .env("PATH", &path_snapshot)
+                            .stdout(std::process::Stdio::piped())
+                            .stderr(std::process::Stdio::null())
+                            .output()
+                            .await
+                            .ok()
+                            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+                            .unwrap_or_default()
+                    };
+                    #[cfg(not(windows))]
+                    let npm_prefix = {
+                        Command::new("npm")
+                            .args(["config", "get", "prefix"])
+                            .env("PATH", &path_snapshot)
+                            .stdout(std::process::Stdio::piped())
+                            .stderr(std::process::Stdio::null())
+                            .output()
+                            .await
+                            .ok()
+                            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+                            .unwrap_or_default()
+                    };
                     if !npm_prefix.is_empty() {
                         let leftover = std::path::PathBuf::from(&npm_prefix)
                             .join("node_modules")
                             .join("openclaw");
                         if leftover.exists() {
                             emit_log(&window, ch, &format!("Removing leftover {}", leftover.display()));
-                            // On Windows, use rmdir /s /q for better handling of locked files
                             if cfg!(windows) {
-                                let _ = Command::new("cmd")
-                                    .args(["/C", "rmdir", "/s", "/q", &leftover.to_string_lossy()])
-                                    .output()
-                                    .await;
+                                // Retry up to 3 times — antivirus may briefly lock npm module files
+                                let leftover_str = leftover.to_string_lossy().to_string();
+                                for attempt in 1u8..=3 {
+                                    let ok = Command::new("cmd")
+                                        .args(["/C", "rmdir", "/s", "/q", &leftover_str])
+                                        .stdout(std::process::Stdio::null())
+                                        .stderr(std::process::Stdio::null())
+                                        .status()
+                                        .await
+                                        .map(|s| s.success())
+                                        .unwrap_or(false);
+                                    if ok || !leftover.exists() { break; }
+                                    if attempt < 3 {
+                                        tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+                                    }
+                                }
                             } else {
                                 let _ = tokio::fs::remove_dir_all(&leftover).await;
                             }
                         }
                     }
-                    let _ = cmd("npm").args(["cache", "clean", "--force"]).output().await;
+                    #[cfg(windows)]
+                    let _ = Command::new("cmd")
+                        .args(["/C", "npm", "cache", "clean", "--force"])
+                        .env("PATH", &path_snapshot)
+                        .stdout(std::process::Stdio::null())
+                        .stderr(std::process::Stdio::null())
+                        .output().await;
+                    #[cfg(not(windows))]
+                    let _ = Command::new("npm")
+                        .args(["cache", "clean", "--force"])
+                        .env("PATH", &path_snapshot)
+                        .stdout(std::process::Stdio::null())
+                        .stderr(std::process::Stdio::null())
+                        .output().await;
                 }
             }
         }
@@ -1358,10 +1644,37 @@ pub async fn install_openclaw(mirror: String, app: tauri::AppHandle, window: Win
         .await;
     if !oc_verify.map(|o| o.status.success()).unwrap_or(false) {
         emit_log(&window, ch, "Warning: openclaw binary not immediately found in PATH.");
-        emit_log(&window, ch, "This may resolve after restarting the application.");
+        if cfg!(windows) {
+            emit_log(&window, ch,
+                "On Windows the new PATH entry takes effect after the app restarts. \
+                 Please close and reopen this installer, then proceed to the next step.");
+        } else {
+            emit_log(&window, ch, "This may resolve after restarting the application.");
+        }
     }
 
     emit_progress(&window, ch, 100, "OpenClaw installed successfully!");
+
+    // On Windows, persist the npm global bin directory to the user PATH registry so
+    // openclaw is discoverable after the app restarts.
+    #[cfg(windows)]
+    {
+        super::path_env::refresh_system_path();
+        // Ask npm where globals live and persist that directory.
+        if let Ok(prefix_out) = Command::new("cmd")
+            .args(["/C", "npm", "config", "get", "prefix"])
+            .env("PATH", super::path_env::expanded_path())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null())
+            .output()
+            .await
+        {
+            let prefix = String::from_utf8_lossy(&prefix_out.stdout).trim().to_string();
+            if !prefix.is_empty() && !prefix.starts_with("npm") {
+                append_dirs_to_user_path_registry(&[&prefix]);
+            }
+        }
+    }
 
     // Step 3: Retrieve installed version
     let version_output = cmd("npm")

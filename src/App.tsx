@@ -121,6 +121,13 @@ function AppShell() {
     navigate("/", { replace: true });
   };
 
+  const handleUninstall = () => {
+    useInstallStore.getState().resetAll();
+    setOpenclawStatus(null);
+    setCheckState("install");
+    navigate("/", { replace: true });
+  };
+
   const handleInstallComplete = useCallback(async () => {
     try {
       const status = await invoke<OpenClawStatus>("check_openclaw_status");
@@ -218,6 +225,7 @@ function AppShell() {
           onReinstall={handleReinstall}
           onReconfigureApi={handleReconfigureApi}
           onConfigureFeishu={handleConfigureFeishu}
+          onUninstall={handleUninstall}
         />
       </Layout>
     );
@@ -249,6 +257,7 @@ function AppShell() {
                 onReinstall={handleReinstall}
                 onReconfigureApi={handleReconfigureApi}
                 onConfigureFeishu={handleConfigureFeishu}
+                onUninstall={handleUninstall}
               />
             ) : null
           }

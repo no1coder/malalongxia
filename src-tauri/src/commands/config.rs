@@ -70,6 +70,9 @@ pub struct OpenClawStatus {
 
 #[tauri::command]
 pub async fn check_openclaw_status() -> Result<OpenClawStatus, String> {
+    // Refresh PATH from system registry so freshly installed openclaw is discoverable.
+    super::path_env::refresh_system_path();
+
     // Check if openclaw binary exists
     let installed = find_program("openclaw").is_ok();
 
@@ -147,6 +150,7 @@ pub async fn check_openclaw_status() -> Result<OpenClawStatus, String> {
 
 #[tauri::command]
 pub async fn update_openclaw() -> Result<String, String> {
+    super::path_env::refresh_system_path();
     find_program("openclaw")?;
 
     // Use `openclaw update` as the official update mechanism
@@ -585,6 +589,8 @@ async fn is_gateway_running() -> bool {
 // Ensure gateway prerequisites are met before starting.
 // Fixes common issues: missing gateway.mode config, stale LaunchAgent paths.
 async fn ensure_gateway_config() {
+    // Make sure PATH is up to date before invoking openclaw sub-commands.
+    super::path_env::refresh_system_path();
     // Run config set in parallel with uninstall (they are independent)
     let config_fut = cmd("openclaw")
         .args(["config", "set", "gateway.mode", "local"])
@@ -611,6 +617,9 @@ async fn ensure_gateway_config() {
 
 #[tauri::command]
 pub async fn launch_openclaw() -> Result<String, String> {
+    // Refresh PATH from system registry before searching for openclaw.
+    // On Windows the app process may not have picked up PATH changes from npm install.
+    super::path_env::refresh_system_path();
     find_program("openclaw")?;
 
     // If already running, just open browser with token
@@ -637,13 +646,31 @@ pub async fn launch_openclaw() -> Result<String, String> {
     };
 
     // Fallback to foreground mode if service mode fails
+    // Keep the Child handle so we can kill it if the gateway fails to come up,
+    // preventing orphan processes that would hold port 18789.
+    let mut foreground_child: Option<tokio::process::Child> = None;
     if !used_service {
-        cmd("openclaw")
+        let mut child = cmd("openclaw")
             .args(["gateway", "run", "--port", &OPENCLAW_PORT.to_string()])
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .spawn()
             .map_err(|e| format!("Failed to launch openclaw gateway: {}", e))?;
+
+        // Give the process 500ms to start, then check if it exited immediately
+        // (e.g. port already in use or missing config).
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                return Err(format!(
+                    "openclaw gateway exited immediately ({}). Port 18789 may be in use or the config is missing.",
+                    status
+                ));
+            }
+            Ok(None) => {} // Still running, good
+            Err(_) => {}   // Cannot check status, continue anyway
+        }
+        foreground_child = Some(child);
     }
 
     // Wait for the gateway to become ready (up to 30s)
@@ -657,6 +684,10 @@ pub async fn launch_openclaw() -> Result<String, String> {
     }
 
     if !ready {
+        // Kill the foreground process to free the port before returning the error
+        if let Some(mut child) = foreground_child {
+            let _ = child.kill().await;
+        }
         // Collect diagnostic info for the error message
         let doctor_output = cmd("openclaw")
             .args(["doctor"])
@@ -707,6 +738,7 @@ pub async fn launch_openclaw() -> Result<String, String> {
 // Stop the gateway service.
 #[tauri::command]
 pub async fn stop_openclaw_gateway() -> Result<String, String> {
+    super::path_env::refresh_system_path();
     find_program("openclaw")?;
 
     let output = cmd("openclaw")
@@ -730,6 +762,7 @@ pub async fn stop_openclaw_gateway() -> Result<String, String> {
 // Restart the gateway service.
 #[tauri::command]
 pub async fn restart_openclaw_gateway() -> Result<String, String> {
+    super::path_env::refresh_system_path();
     find_program("openclaw")?;
 
     // Auto-fix config issues before restarting
@@ -762,6 +795,7 @@ pub async fn restart_openclaw_gateway() -> Result<String, String> {
 // Run `openclaw doctor` for diagnostics.
 #[tauri::command]
 pub async fn openclaw_doctor() -> Result<String, String> {
+    super::path_env::refresh_system_path();
     find_program("openclaw")?;
 
     let output = cmd("openclaw")
@@ -779,6 +813,7 @@ pub async fn openclaw_doctor() -> Result<String, String> {
 // Run `openclaw health` to check gateway health.
 #[tauri::command]
 pub async fn openclaw_health() -> Result<String, String> {
+    super::path_env::refresh_system_path();
     find_program("openclaw")?;
 
     let output = cmd("openclaw")
@@ -801,6 +836,7 @@ pub async fn openclaw_health() -> Result<String, String> {
 // Open the OpenClaw dashboard (TUI).
 #[tauri::command]
 pub async fn openclaw_dashboard() -> Result<String, String> {
+    super::path_env::refresh_system_path();
     find_program("openclaw")?;
 
     // `openclaw dashboard` opens the WebUI with auth token
@@ -812,6 +848,7 @@ pub async fn openclaw_dashboard() -> Result<String, String> {
 // Repair gateway config and service installation.
 #[tauri::command]
 pub async fn repair_openclaw() -> Result<String, String> {
+    super::path_env::refresh_system_path();
     find_program("openclaw")?;
 
     let mut steps: Vec<String> = Vec::new();
@@ -929,6 +966,7 @@ fn chrono_timestamp() -> String {
 // Check if the Feishu plugin is installed.
 #[tauri::command]
 pub async fn check_feishu_plugin() -> Result<bool, String> {
+    super::path_env::refresh_system_path();
     find_program("openclaw")?;
 
     let output = cmd("openclaw")
@@ -946,6 +984,7 @@ pub async fn check_feishu_plugin() -> Result<bool, String> {
 // Install the Feishu plugin.
 #[tauri::command]
 pub async fn install_feishu_plugin() -> Result<String, String> {
+    super::path_env::refresh_system_path();
     find_program("openclaw")?;
 
     let output = cmd("openclaw")
@@ -1030,6 +1069,292 @@ pub async fn reset_installation() -> Result<(), String> {
     }
 
     Ok(())
+}
+
+/// Remove a directory on Windows with up to 3 retries (antivirus file locks).
+#[cfg(windows)]
+async fn remove_dir_with_retry(path: &std::path::Path) -> bool {
+    if !path.exists() { return true; }
+    let path_str = path.to_string_lossy().to_string();
+    for attempt in 1u8..=3 {
+        let ok = Command::new("cmd")
+            .args(["/C", "rmdir", "/s", "/q", &path_str])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .await
+            .map(|s| s.success())
+            .unwrap_or(false);
+        if ok || !path.exists() { return true; }
+        if attempt < 3 {
+            tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+        }
+    }
+    !path.exists()
+}
+
+/// Remove entries matching `needle` (case-insensitive) from the user PATH registry value.
+/// Reads HKCU\Environment\Path, filters out matching segments, writes back.
+#[cfg(windows)]
+fn remove_from_user_path_registry(needle: &str) {
+    use std::process::Command as StdCommand;
+
+    let out = StdCommand::new("reg")
+        .args(["query", r"HKCU\Environment", "/v", "Path"])
+        .output()
+        .ok();
+    let existing = out
+        .as_ref()
+        .and_then(|o| {
+            let text = String::from_utf8_lossy(&o.stdout).to_string();
+            text.lines()
+                .find(|l| l.contains("REG_"))
+                .and_then(|line| {
+                    if let Some(pos) = line.find("REG_EXPAND_SZ") {
+                        Some(line[pos + "REG_EXPAND_SZ".len()..].trim().to_string())
+                    } else if let Some(pos) = line.find("REG_SZ") {
+                        Some(line[pos + "REG_SZ".len()..].trim().to_string())
+                    } else {
+                        None
+                    }
+                })
+        })
+        .unwrap_or_default();
+
+    if existing.is_empty() { return; }
+
+    let needle_lower = needle.to_lowercase();
+    let filtered: Vec<&str> = existing
+        .split(';')
+        .filter(|seg| {
+            let s = seg.trim();
+            !s.is_empty() && !s.to_lowercase().starts_with(&needle_lower)
+        })
+        .collect();
+
+    let new_path = filtered.join(";");
+    if new_path == existing { return; } // nothing changed
+
+    let _ = StdCommand::new("reg")
+        .args([
+            "add", r"HKCU\Environment", "/v", "Path",
+            "/t", "REG_EXPAND_SZ", "/d", &new_path, "/f",
+        ])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .output();
+
+    // Broadcast WM_SETTINGCHANGE so Explorer picks up the new PATH
+    let _ = StdCommand::new("powershell")
+        .args([
+            "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command",
+            "Add-Type -TypeDefinition 'using System;using System.Runtime.InteropServices;\
+             public class Win32{[DllImport(\"user32.dll\",SetLastError=true)]public static extern \
+             IntPtr SendMessageTimeout(IntPtr h,uint m,UIntPtr w,string l,uint f,uint t,out IntPtr r);}'; \
+             $r=[IntPtr]::Zero; \
+             [Win32]::SendMessageTimeout([IntPtr]0xffff,0x001a,[UIntPtr]::Zero,'Environment',2,5000,[ref]$r) | Out-Null"
+        ])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .ok();
+}
+
+/// Uninstall selected components.
+/// `uninstall_openclaw` — npm uninstall -g openclaw + remove ~/.openclaw config dir
+/// `uninstall_node`     — remove %LOCALAPPDATA%\Programs\nodejs + clean PATH registry
+/// `uninstall_git`      — remove %LOCALAPPDATA%\Programs\MinGit + clean PATH registry
+///
+/// Each flag is independent; a failure in one does not abort the others.
+/// Returns a human-readable summary of what was done.
+#[tauri::command]
+pub async fn uninstall_components(
+    uninstall_openclaw: bool,
+    uninstall_node: bool,
+    uninstall_git: bool,
+) -> Result<String, String> {
+    let mut steps: Vec<String> = Vec::new();
+    let mut errors: Vec<String> = Vec::new();
+
+    // ── OpenClaw ────────────────────────────────────────────────────────────
+    if uninstall_openclaw {
+        // 1a. Stop gateway if running
+        let _ = cmd("openclaw")
+            .args(["gateway", "stop"])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .output()
+            .await;
+
+        // 1b. npm uninstall -g openclaw
+        let npm_out = cmd("npm")
+            .args(["uninstall", "-g", "openclaw"])
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .output()
+            .await;
+        match npm_out {
+            Ok(o) => {
+                let stderr = String::from_utf8_lossy(&o.stderr).to_string();
+                if o.status.success() || stderr.to_lowercase().contains("not installed") {
+                    steps.push("OpenClaw package uninstalled.".to_string());
+                } else {
+                    errors.push(format!("npm uninstall openclaw warning: {}", stderr.trim()));
+                    steps.push("OpenClaw package uninstall attempted (may have warnings).".to_string());
+                }
+            }
+            Err(e) => {
+                errors.push(format!("npm uninstall failed: {}", e));
+            }
+        }
+
+        // 1c. Remove ~/.openclaw config directory
+        if let Ok(config_dir) = openclaw_config_dir() {
+            if config_dir.exists() {
+                #[cfg(windows)]
+                let removed = remove_dir_with_retry(&config_dir).await;
+                #[cfg(not(windows))]
+                let removed = tokio::fs::remove_dir_all(&config_dir).await.is_ok();
+
+                if removed {
+                    steps.push("OpenClaw config directory removed.".to_string());
+                } else {
+                    errors.push(format!("Could not remove config dir: {}", config_dir.display()));
+                }
+            }
+        }
+
+        // 1d. On Windows: remove npm global prefix from PATH registry if it only contained openclaw
+        //     (best-effort; we remove the %APPDATA%\npm entry that was added for openclaw)
+        #[cfg(windows)]
+        {
+            let appdata = std::env::var("APPDATA").unwrap_or_default();
+            if !appdata.is_empty() {
+                let npm_global = std::path::PathBuf::from(&appdata).join("npm");
+                remove_from_user_path_registry(&npm_global.to_string_lossy());
+            }
+        }
+    }
+
+    // ── Node.js ─────────────────────────────────────────────────────────────
+    if uninstall_node {
+        #[cfg(windows)]
+        let node_dir = {
+            let local_data = std::env::var("LOCALAPPDATA").unwrap_or_default();
+            if !local_data.is_empty() {
+                std::path::PathBuf::from(&local_data).join("Programs").join("nodejs")
+            } else {
+                dirs::home_dir().unwrap_or_default()
+                    .join("AppData").join("Local").join("Programs").join("nodejs")
+            }
+        };
+
+        #[cfg(not(windows))]
+        let node_dir = dirs::home_dir().unwrap_or_default().join(".local").join("node");
+
+        if node_dir.exists() {
+            // Remove PATH registry entry first (Windows only)
+            #[cfg(windows)]
+            remove_from_user_path_registry(&node_dir.to_string_lossy());
+
+            #[cfg(windows)]
+            let removed = remove_dir_with_retry(&node_dir).await;
+            #[cfg(not(windows))]
+            let removed = tokio::fs::remove_dir_all(&node_dir).await.is_ok();
+
+            if removed {
+                steps.push(format!("Node.js directory removed: {}", node_dir.display()));
+            } else {
+                errors.push(format!("Could not fully remove Node.js dir: {}", node_dir.display()));
+                steps.push(format!("Node.js directory removal attempted: {}", node_dir.display()));
+            }
+        } else {
+            steps.push("Node.js (portable) directory not found; skipped.".to_string());
+        }
+
+        // Also clean up npm cache directory to free disk space
+        #[cfg(windows)]
+        {
+            let local_data2 = std::env::var("LOCALAPPDATA").unwrap_or_default();
+            if !local_data2.is_empty() {
+                let npm_cache = std::path::PathBuf::from(&local_data2).join("npm-cache");
+                if npm_cache.exists() {
+                    let _ = remove_dir_with_retry(&npm_cache).await;
+                    steps.push("npm cache directory removed.".to_string());
+                }
+            }
+        }
+
+        // Remove NVM-installed node directory if present (macOS/Linux)
+        #[cfg(not(windows))]
+        {
+            let nvm_node = dirs::home_dir().unwrap_or_default().join(".nvm").join("versions").join("node");
+            if nvm_node.exists() {
+                if tokio::fs::remove_dir_all(&nvm_node).await.is_ok() {
+                    steps.push("nvm Node.js versions removed.".to_string());
+                }
+            }
+        }
+    }
+
+    // ── MinGit (Windows only) ────────────────────────────────────────────────
+    if uninstall_git {
+        #[cfg(windows)]
+        {
+            let local_data = std::env::var("LOCALAPPDATA").unwrap_or_default();
+            let git_dir = if !local_data.is_empty() {
+                std::path::PathBuf::from(&local_data).join("Programs").join("MinGit")
+            } else {
+                dirs::home_dir().unwrap_or_default()
+                    .join("AppData").join("Local").join("Programs").join("MinGit")
+            };
+
+            if git_dir.exists() {
+                // Remove git cmd dir from PATH registry
+                let git_cmd = git_dir.join("cmd");
+                remove_from_user_path_registry(&git_cmd.to_string_lossy());
+                remove_from_user_path_registry(&git_dir.to_string_lossy());
+
+                let removed = remove_dir_with_retry(&git_dir).await;
+                if removed {
+                    steps.push(format!("MinGit directory removed: {}", git_dir.display()));
+                } else {
+                    errors.push(format!("Could not fully remove MinGit dir: {}", git_dir.display()));
+                    steps.push("MinGit directory removal attempted.".to_string());
+                }
+            } else {
+                steps.push("MinGit directory not found; skipped.".to_string());
+            }
+        }
+
+        // macOS/Linux: remove ~/.local/git
+        #[cfg(not(windows))]
+        {
+            let git_dir = dirs::home_dir().unwrap_or_default().join(".local").join("git");
+            if git_dir.exists() {
+                if tokio::fs::remove_dir_all(&git_dir).await.is_ok() {
+                    steps.push(format!("Git directory removed: {}", git_dir.display()));
+                } else {
+                    errors.push(format!("Could not remove git dir: {}", git_dir.display()));
+                }
+            } else {
+                steps.push("Git directory (~/.local/git) not found; skipped.".to_string());
+            }
+        }
+    }
+
+    // Build summary
+    let mut summary = steps.join("\n");
+    if !errors.is_empty() {
+        summary.push_str("\n\nWarnings:\n");
+        summary.push_str(&errors.join("\n"));
+    }
+
+    if steps.is_empty() && errors.is_empty() {
+        Ok("Nothing to uninstall.".to_string())
+    } else {
+        Ok(summary)
+    }
 }
 
 #[cfg(test)]

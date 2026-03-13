@@ -189,7 +189,8 @@
     "scanDesc": "添加微信后备注「OpenClaw」，即可获取使用技巧和专属支持",
     "scanHint": "添加后你将获得：使用技巧文档 + 问题优先响应 + 社群邀请",
     "launching": "正在启动 OpenClaw...",
-    "launchSuccess": "OpenClaw 已启动，浏览器已打开 {{url}}"
+    "launchSuccess": "OpenClaw 已启动，浏览器已打开 {{url}}",
+    "skipToDashboard": "忽略错误，继续进入控制面板"
   },
   "dashboard": {
     "title": "OpenClaw 控制面板",
@@ -231,7 +232,14 @@
     "diagnosticsTitle": "诊断工具",
     "repair": "自动修复",
     "repairRunning": "正在修复...",
-    "configureFeishu": "配置飞书插件"
+    "configureFeishu": "配置飞书插件",
+    "uninstall": "卸载",
+    "uninstallConfirm": "请选择要卸载的组件（勾选后操作不可撤销）：",
+    "uninstalling": "正在卸载...",
+    "uninstallSuccess": "卸载完成",
+    "uninstallOptionOpenclaw": "OpenClaw（程序 + 配置文件）",
+    "uninstallOptionNode": "Node.js（本工具安装的可移植版本）",
+    "uninstallOptionGit": "Git（本工具安装的 MinGit/可移植版本）"
   },
   "feishu": {
     "title": "飞书插件配置",

@@ -455,3 +455,33 @@
     padding: var(--spacing-md);
   }
 }
+
+/* ----- Uninstall options checklist ----- */
+.dashboard-uninstall-options {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  margin: var(--spacing-md) 0;
+  text-align: left;
+}
+
+.dashboard-uninstall-option {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.dashboard-uninstall-option input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--color-danger, #E54D42);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.dashboard-uninstall-option span {
+  line-height: 1.4;
+}

@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -34,6 +34,16 @@ export default function CompletionPage({ onComplete }: CompletionPageProps) {
   const { nodeVersion, nodeRequired, openclawVersion, selectedProvider } = useInstallStore();
   const [launchStatus, setLaunchStatus] = useState<"idle" | "launching" | "success" | "error">("idle");
   const [launchMessage, setLaunchMessage] = useState<string | null>(null);
+  const redirectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Clean up redirect timer on unmount
+  useEffect(() => {
+    return () => {
+      if (redirectTimerRef.current !== null) {
+        clearTimeout(redirectTimerRef.current);
+      }
+    };
+  }, []);
 
   // Launch OpenClaw via Tauri backend, then transition to dashboard
   const handleLaunch = useCallback(async () => {
@@ -45,11 +55,14 @@ export default function CompletionPage({ onComplete }: CompletionPageProps) {
       setLaunchMessage(url);
       // Transition to dashboard after a brief delay so user sees the success state
       if (onComplete) {
-        setTimeout(onComplete, 1500);
+        redirectTimerRef.current = setTimeout(onComplete, 1500);
       }
     } catch (err) {
       setLaunchStatus("error");
-      setLaunchMessage(String(err));
+      // Show only the message part if it's a Tauri error string like "xxx: message"
+      const raw = String(err);
+      const colonIdx = raw.indexOf(": ");
+      setLaunchMessage(colonIdx !== -1 ? raw.slice(colonIdx + 2) : raw);
     }
   }, [onComplete]);
 
@@ -147,7 +160,7 @@ export default function CompletionPage({ onComplete }: CompletionPageProps) {
           <button
             className="completion-btn completion-btn-primary btn-cta-glow"
             onClick={handleLaunch}
-            disabled={launchStatus === "launching"}
+            disabled={launchStatus === "launching" || launchStatus === "success"}
           >
             <Rocket size={18} />
             {launchStatus === "launching"
@@ -165,6 +178,11 @@ export default function CompletionPage({ onComplete }: CompletionPageProps) {
               <AlertCircle size={14} />
               <span>{launchMessage}</span>
             </div>
+          )}
+          {launchStatus === "error" && onComplete && (
+            <button className="completion-btn completion-btn-secondary" onClick={onComplete}>
+              {t("completion.skipToDashboard")}
+            </button>
           )}
           <button className="completion-btn completion-btn-secondary" onClick={handleTips}>
             <Sparkles size={18} />

@@ -189,7 +189,8 @@
     "scanDesc": "Add on WeChat with note \"OpenClaw\" for tips and exclusive support",
     "scanHint": "You'll get: Tips & docs + Priority support + Community invite",
     "launching": "Launching OpenClaw...",
-    "launchSuccess": "OpenClaw is running, browser opened {{url}}"
+    "launchSuccess": "OpenClaw is running, browser opened {{url}}",
+    "skipToDashboard": "Ignore error, go to Dashboard"
   },
   "dashboard": {
     "title": "OpenClaw Dashboard",
@@ -231,7 +232,14 @@
     "diagnosticsTitle": "Diagnostics",
     "repair": "Auto Repair",
     "repairRunning": "Repairing...",
-    "configureFeishu": "Configure Feishu"
+    "configureFeishu": "Configure Feishu",
+    "uninstall": "Uninstall",
+    "uninstallConfirm": "Select components to remove (cannot be undone):",
+    "uninstalling": "Uninstalling...",
+    "uninstallSuccess": "Uninstall complete",
+    "uninstallOptionOpenclaw": "OpenClaw (app + config files)",
+    "uninstallOptionNode": "Node.js (portable version installed by this tool)",
+    "uninstallOptionGit": "Git (MinGit / portable version installed by this tool)"
   },
   "feishu": {
     "title": "Feishu Plugin",

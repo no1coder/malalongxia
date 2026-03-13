@@ -112,7 +112,8 @@ describe("CompletionPage", () => {
     await user.click(screen.getByText("completion.startUsing"));
 
     await waitFor(() => {
-      expect(screen.getByText("Error: Gateway failed")).toBeInTheDocument();
+      // Error prefix is stripped; only the message part is shown
+      expect(screen.getByText("Gateway failed")).toBeInTheDocument();
     });
   });
 

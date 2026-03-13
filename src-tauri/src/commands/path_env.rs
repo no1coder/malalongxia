@@ -1,5 +1,47 @@
 use std::path::PathBuf;
 
+#[cfg(windows)]
+mod npm_prefix_cache {
+    use std::path::PathBuf;
+    use std::sync::{Mutex, OnceLock};
+
+    static CACHE: OnceLock<Mutex<Option<PathBuf>>> = OnceLock::new();
+
+    fn mutex() -> &'static Mutex<Option<PathBuf>> {
+        CACHE.get_or_init(|| Mutex::new(None))
+    }
+
+    pub fn get_or_query() -> Option<PathBuf> {
+        let m = mutex();
+        let cached = m.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        if let Some(p) = cached {
+            return Some(p);
+        }
+        let result = std::process::Command::new("cmd")
+            .args(["/C", "npm", "config", "get", "prefix"])
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null())
+            .output()
+            .ok()
+            .and_then(|o| {
+                let prefix = String::from_utf8_lossy(&o.stdout).trim().to_string();
+                if !prefix.is_empty() && !prefix.starts_with("npm") {
+                    Some(PathBuf::from(prefix))
+                } else {
+                    None
+                }
+            });
+        if let Some(ref p) = result {
+            *m.lock().unwrap_or_else(|e| e.into_inner()) = Some(p.clone());
+        }
+        result
+    }
+
+    pub fn invalidate() {
+        *mutex().lock().unwrap_or_else(|e| e.into_inner()) = None;
+    }
+}
+
 /// Build an expanded PATH string that includes common Node.js install locations.
 ///
 /// Packaged desktop apps (especially macOS .app bundles) don't inherit the user's
@@ -46,10 +88,15 @@ pub fn expanded_path() -> String {
         extra.push(PathBuf::from(r"C:\Program Files\nodejs"));
         extra.push(PathBuf::from(r"C:\Program Files (x86)\nodejs"));
 
-        // npm global bin
+        // npm global bin — try the static default first, then query npm for the actual prefix
         let appdata = std::env::var("APPDATA").unwrap_or_default();
         if !appdata.is_empty() {
             extra.push(PathBuf::from(&appdata).join("npm"));
+        }
+
+        // Dynamically resolve npm global prefix so custom npm prefix locations are found.
+        if let Some(p) = npm_prefix_cache::get_or_query() {
+            extra.push(p);
         }
 
         // nvm-windows
@@ -62,10 +109,19 @@ pub fn expanded_path() -> String {
             extra.push(PathBuf::from(&nvm_symlink));
         }
 
-        // fnm on Windows
+        // fnm on Windows: check FNM_DIR env var first, then fall back to default locations.
+        // fnm_multishells is a temporary shell-proxy dir, not where node binaries live.
         let local_data = std::env::var("LOCALAPPDATA").unwrap_or_default();
         if !local_data.is_empty() {
-            extra.push(PathBuf::from(&local_data).join("fnm_multishells"));
+            // fnm stores Node versions under %LOCALAPPDATA%\fnm\node-versions\<ver>\installation
+            let fnm_base = PathBuf::from(&local_data).join("fnm").join("node-versions");
+            push_latest_fnm_node(&mut extra, &fnm_base);
+        }
+        // Also honour FNM_DIR if the user configured a custom location
+        let fnm_dir = std::env::var("FNM_DIR").unwrap_or_default();
+        if !fnm_dir.is_empty() {
+            let fnm_base = PathBuf::from(&fnm_dir).join("node-versions");
+            push_latest_fnm_node(&mut extra, &fnm_base);
         }
 
         // Volta on Windows
@@ -101,6 +157,16 @@ pub fn expanded_path() -> String {
     let sep = if cfg!(windows) { ";" } else { ":" };
     parts.join(sep)
 }
+
+/// Invalidate the cached npm prefix so the next call to expanded_path() re-queries npm.
+/// Call this after installing Node.js so the new npm global bin directory is discovered.
+#[cfg(windows)]
+pub fn invalidate_npm_prefix_cache() {
+    npm_prefix_cache::invalidate();
+}
+
+#[cfg(not(windows))]
+pub fn invalidate_npm_prefix_cache() {}
 
 /// Refresh the expanded PATH by re-reading system environment variables.
 /// On Windows, after an MSI installer modifies the system PATH, the current
@@ -219,4 +285,34 @@ fn extract_version_tuple(path: &std::path::Path) -> (u64, u64, u64) {
         }
     }
     (0, 0, 0)
+}
+
+/// Find the highest-versioned fnm Node installation under `base/node-versions/<ver>/installation`
+/// and push it onto `out`. Works on Windows where glob crate may not be available.
+#[cfg(windows)]
+fn push_latest_fnm_node(out: &mut Vec<PathBuf>, base: &PathBuf) {
+    if !base.exists() {
+        return;
+    }
+    let entries = match std::fs::read_dir(base) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+    let mut best: Option<((u64, u64, u64), PathBuf)> = None;
+    for entry in entries.flatten() {
+        let installation = entry.path().join("installation");
+        if installation.exists() {
+            let ver = extract_version_tuple(&entry.path());
+            if ver > (0, 0, 0) {
+                match best {
+                    Some((ref b, _)) if ver > *b => best = Some((ver, installation)),
+                    None => best = Some((ver, installation)),
+                    _ => {}
+                }
+            }
+        }
+    }
+    if let Some((_, path)) = best {
+        out.push(path);
+    }
 }

@@ -32,6 +32,7 @@ const DEFAULT_PROPS = {
   onReinstall: vi.fn(),
   onReconfigureApi: vi.fn(),
   onConfigureFeishu: vi.fn(),
+  onUninstall: vi.fn(),
 };
 
 describe("DashboardPage", () => {
@@ -40,6 +41,7 @@ describe("DashboardPage", () => {
     mockOpenUrl.mockClear();
     DEFAULT_PROPS.onReinstall.mockClear();
     DEFAULT_PROPS.onReconfigureApi.mockClear();
+    DEFAULT_PROPS.onUninstall.mockClear();
   });
 
   // --- Rendering ---
@@ -319,6 +321,68 @@ describe("DashboardPage", () => {
   it("renders view tutorial button", () => {
     renderWithRouter(<DashboardPage {...DEFAULT_PROPS} />);
     expect(screen.getByText("dashboard.viewTutorial")).toBeInTheDocument();
+  });
+
+  it("renders uninstall button", () => {
+    renderWithRouter(<DashboardPage {...DEFAULT_PROPS} />);
+    expect(screen.getByText("dashboard.uninstall")).toBeInTheDocument();
+  });
+
+  it("shows uninstall confirm dialog when uninstall button clicked", async () => {
+    const user = userEvent.setup();
+    renderWithRouter(<DashboardPage {...DEFAULT_PROPS} />);
+
+    await user.click(screen.getByText("dashboard.uninstall"));
+    expect(screen.getByText("dashboard.uninstallConfirm")).toBeInTheDocument();
+  });
+
+  it("dismisses uninstall dialog when cancel clicked", async () => {
+    const user = userEvent.setup();
+    renderWithRouter(<DashboardPage {...DEFAULT_PROPS} />);
+
+    await user.click(screen.getByText("dashboard.uninstall"));
+    expect(screen.getByText("dashboard.uninstallConfirm")).toBeInTheDocument();
+
+    // Get all cancel buttons and click the one in the dialog
+    const cancelButtons = screen.getAllByText("common.cancel");
+    await user.click(cancelButtons[cancelButtons.length - 1]);
+    expect(screen.queryByText("dashboard.uninstallConfirm")).not.toBeInTheDocument();
+    expect(DEFAULT_PROPS.onUninstall).not.toHaveBeenCalled();
+  });
+
+  it("calls reset_installation and shows success when confirmed", async () => {
+    mockInvoke.mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    renderWithRouter(<DashboardPage {...DEFAULT_PROPS} />);
+
+    await user.click(screen.getByText("dashboard.uninstall"));
+    // Confirm in dialog — last button with label "dashboard.uninstall"
+    const uninstallButtons = screen.getAllByText("dashboard.uninstall");
+    await user.click(uninstallButtons[uninstallButtons.length - 1]);
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith("reset_installation");
+    });
+
+    // Success message should appear
+    await waitFor(() => {
+      expect(screen.getByText("dashboard.uninstallSuccess")).toBeInTheDocument();
+    });
+  });
+
+  it("shows error message when uninstall fails", async () => {
+    mockInvoke.mockRejectedValue("invoke error: Permission denied");
+    const user = userEvent.setup();
+    renderWithRouter(<DashboardPage {...DEFAULT_PROPS} />);
+
+    await user.click(screen.getByText("dashboard.uninstall"));
+    const uninstallButtons = screen.getAllByText("dashboard.uninstall");
+    await user.click(uninstallButtons[uninstallButtons.length - 1]);
+
+    await waitFor(() => {
+      expect(screen.getByText("Permission denied")).toBeInTheDocument();
+    });
+    expect(DEFAULT_PROPS.onUninstall).not.toHaveBeenCalled();
   });
 
   // --- Version display logic ---
