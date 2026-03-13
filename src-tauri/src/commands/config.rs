@@ -28,6 +28,39 @@ fn cmd(program: &str) -> Command {
     }
 }
 
+/// Spawn a background process on Windows with CREATE_NO_WINDOW so no console
+/// window flashes up. The process runs directly (not via cmd /C) to avoid
+/// cmd.exe inheriting handles and blocking detach.
+/// On non-Windows this is identical to cmd().
+#[cfg(windows)]
+fn spawn_background(program: &str) -> Command {
+    use std::os::windows::process::CommandExt;
+    // Resolve the absolute path (e.g. openclaw.cmd) so we can call it directly
+    // without going through cmd.exe.
+    let resolved = which::which_in(program, Some(expanded_path()), ".")
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|_| program.to_string());
+    // If it's a .cmd script we still need cmd /C, but add CREATE_NO_WINDOW.
+    let mut c = if resolved.to_lowercase().ends_with(".cmd") || resolved.to_lowercase().ends_with(".bat") {
+        let mut inner = Command::new("cmd");
+        inner.args(["/C", &resolved]);
+        inner
+    } else {
+        Command::new(&resolved)
+    };
+    c.env("PATH", expanded_path());
+    // CREATE_NO_WINDOW (0x08000000) prevents a console window from appearing.
+    c.creation_flags(0x08000000);
+    c
+}
+
+#[cfg(not(windows))]
+fn spawn_background(program: &str) -> Command {
+    let mut c = Command::new(program);
+    c.env("PATH", expanded_path());
+    c
+}
+
 // Resolve the OpenClaw config directory path.
 fn openclaw_config_dir() -> Result<PathBuf, String> {
     let home = dirs::home_dir().ok_or("Cannot determine home directory")?;
@@ -629,28 +662,48 @@ pub async fn launch_openclaw() -> Result<String, String> {
         return Ok(auth_url);
     }
 
-    // Auto-fix common config issues before starting
-    ensure_gateway_config().await;
+    // Try service mode first: `openclaw gateway start` (non-blocking probe).
+    // We only attempt to start an already-installed service — we never call
+    // `gateway install` here because that requires admin privileges on Windows
+    // and would block or silently fail for standard users.
+    // Use a short timeout so a missing/broken service doesn't delay the user.
+    let service_started = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        cmd("openclaw")
+            .args(["gateway", "start"])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .output(),
+    )
+    .await
+    .map(|r| r.map(|o| o.status.success()).unwrap_or(false))
+    .unwrap_or(false);
 
-    // Try service mode first: `openclaw gateway start`
-    let service_result = cmd("openclaw")
-        .args(["gateway", "start"])
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .output()
-        .await;
+    // If the service command succeeded, wait up to 10s for the port to become
+    // ready before falling through to foreground mode.  This prevents spawning
+    // a second gateway process that would immediately fail with "port in use".
+    if service_started {
+        for _ in 0..10 {
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            if is_gateway_running().await {
+                let auth_url = gateway_url_with_token().await;
+                open_in_browser(&auth_url)?;
+                return Ok(auth_url);
+            }
+        }
+        // Service start returned success but gateway never became reachable —
+        // fall through to foreground mode.
+    }
 
-    let used_service = match &service_result {
-        Ok(o) => o.status.success(),
-        Err(_) => false,
-    };
-
-    // Fallback to foreground mode if service mode fails
+    // Fallback: spawn gateway in foreground (run) mode.
+    // On Windows we use spawn_background() which adds CREATE_NO_WINDOW so no
+    // console window flashes, and calls the binary directly instead of via
+    // cmd.exe to avoid handle-inheritance issues that prevent proper detach.
     // Keep the Child handle so we can kill it if the gateway fails to come up,
     // preventing orphan processes that would hold port 18789.
-    let mut foreground_child: Option<tokio::process::Child> = None;
-    if !used_service {
-        let mut child = cmd("openclaw")
+    let foreground_child: Option<tokio::process::Child>;
+    {
+        let mut child = spawn_background("openclaw")
             .args(["gateway", "run", "--port", &OPENCLAW_PORT.to_string()])
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
