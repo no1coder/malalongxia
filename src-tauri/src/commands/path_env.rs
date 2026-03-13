@@ -17,20 +17,46 @@ mod npm_prefix_cache {
         if let Some(p) = cached {
             return Some(p);
         }
-        let result = std::process::Command::new("cmd")
+        // Use spawn + try_wait loop instead of .output() so we can enforce
+        // a timeout. A broken/hung npm must never block the entire app.
+        let mut child = std::process::Command::new("cmd")
             .args(["/C", "npm", "config", "get", "prefix"])
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::null())
-            .output()
-            .ok()
-            .and_then(|o| {
-                let prefix = String::from_utf8_lossy(&o.stdout).trim().to_string();
+            .spawn()
+            .ok()?;
+
+        // Poll for up to 3 seconds (30 × 100ms)
+        let status = {
+            let mut exit_status = None;
+            for _ in 0..30 {
+                match child.try_wait() {
+                    Ok(Some(s)) => { exit_status = Some(s); break; }
+                    Ok(None) => std::thread::sleep(std::time::Duration::from_millis(100)),
+                    Err(_) => break,
+                }
+            }
+            if exit_status.is_none() {
+                let _ = child.kill();
+                let _ = child.wait(); // reap
+            }
+            exit_status
+        };
+
+        let result = status
+            .filter(|s| s.success())
+            .and_then(|_| {
+                use std::io::Read;
+                let mut output = String::new();
+                child.stdout.take()?.read_to_string(&mut output).ok()?;
+                let prefix = output.trim().to_string();
                 if !prefix.is_empty() && !prefix.starts_with("npm") {
                     Some(PathBuf::from(prefix))
                 } else {
                     None
                 }
             });
+
         if let Some(ref p) = result {
             *m.lock().unwrap_or_else(|e| e.into_inner()) = Some(p.clone());
         }

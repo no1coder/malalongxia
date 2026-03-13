@@ -70,6 +70,35 @@ fn openclaw_config_dir() -> Result<PathBuf, String> {
 const OPENCLAW_PORT: u16 = 18789;
 const OPENCLAW_URL: &str = "http://127.0.0.1:18789";
 
+/// Kill a child process and its entire process tree.
+/// On Windows, `child.kill()` only terminates the direct child (often cmd.exe),
+/// leaving grandchild processes (node.exe) alive and holding ports.
+/// We use `taskkill /F /T` to kill the entire tree.
+async fn kill_child_tree(child: &mut tokio::process::Child) {
+    #[cfg(windows)]
+    {
+        if let Some(pid) = child.id() {
+            use std::os::windows::process::CommandExt;
+            // Timeout so a stuck taskkill doesn't block the caller.
+            let _ = tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                Command::new("taskkill")
+                    .args(["/F", "/T", "/PID", &pid.to_string()])
+                    .creation_flags(0x08000000)
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .output(),
+            )
+            .await;
+        }
+        let _ = child.kill().await;
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = child.kill().await;
+    }
+}
+
 // Read the gateway auth token from ~/.openclaw/openclaw.json
 async fn read_gateway_token() -> Option<String> {
     let config_dir = openclaw_config_dir().ok()?;
@@ -608,44 +637,61 @@ fn open_in_browser(url: &str) -> Result<(), String> {
 }
 
 // Helper: probe if gateway is reachable.
+// Checks both IPv4 and IPv6 loopback concurrently because Node.js may bind
+// to either depending on OS and config (e.g. `::` vs `0.0.0.0`).
 async fn is_gateway_running() -> bool {
-    let client = reqwest::Client::builder()
+    let client = match reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(2))
         .build()
-        .ok();
-    match client {
-        Some(c) => c.get(OPENCLAW_URL).send().await.is_ok(),
-        None => false,
-    }
+        .ok()
+    {
+        Some(c) => c,
+        None => return false,
+    };
+    let (r4, r6) = tokio::join!(
+        client.get(OPENCLAW_URL).send(),
+        client.get(format!("http://[::1]:{}", OPENCLAW_PORT)).send(),
+    );
+    r4.is_ok() || r6.is_ok()
 }
 
 // Ensure gateway prerequisites are met before starting.
 // Fixes common issues: missing gateway.mode config, stale LaunchAgent paths.
+// Each sub-command has a timeout to prevent the whole function from hanging.
 async fn ensure_gateway_config() {
-    // Make sure PATH is up to date before invoking openclaw sub-commands.
     super::path_env::refresh_system_path();
-    // Run config set in parallel with uninstall (they are independent)
-    let config_fut = cmd("openclaw")
-        .args(["config", "set", "gateway.mode", "local"])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .output();
+    let timeout = std::time::Duration::from_secs(10);
 
-    let uninstall_fut = cmd("openclaw")
-        .args(["gateway", "uninstall"])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .output();
+    let config_fut = tokio::time::timeout(
+        timeout,
+        cmd("openclaw")
+            .args(["config", "set", "gateway.mode", "local"])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .output(),
+    );
+
+    let uninstall_fut = tokio::time::timeout(
+        timeout,
+        cmd("openclaw")
+            .args(["gateway", "uninstall"])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .output(),
+    );
 
     let _ = tokio::join!(config_fut, uninstall_fut);
 
     // Reinstall depends on uninstall completing first
-    let _ = cmd("openclaw")
-        .args(["gateway", "install"])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .output()
-        .await;
+    let _ = tokio::time::timeout(
+        timeout,
+        cmd("openclaw")
+            .args(["gateway", "install"])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .output(),
+    )
+    .await;
 }
 
 #[tauri::command]
@@ -662,22 +708,55 @@ pub async fn launch_openclaw() -> Result<String, String> {
         return Ok(auth_url);
     }
 
-    // Try service mode first: `openclaw gateway start` (non-blocking probe).
-    // We only attempt to start an already-installed service — we never call
-    // `gateway install` here because that requires admin privileges on Windows
-    // and would block or silently fail for standard users.
-    // Use a short timeout so a missing/broken service doesn't delay the user.
-    let service_started = tokio::time::timeout(
+    // Ensure gateway.mode=local is set before any launch attempt.
+    // Without this the gateway may refuse to start or bind to the wrong interface.
+    // Timeout guards against a broken/hung openclaw CLI.
+    let _ = tokio::time::timeout(
         std::time::Duration::from_secs(5),
         cmd("openclaw")
-            .args(["gateway", "start"])
+            .args(["config", "set", "gateway.mode", "local"])
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .output(),
     )
-    .await
-    .map(|r| r.map(|o| o.status.success()).unwrap_or(false))
-    .unwrap_or(false);
+    .await;
+
+    // Ensure logs directory exists so we can capture gateway stderr.
+    let logs_dir = dirs::home_dir()
+        .unwrap_or_default()
+        .join(".openclaw/logs");
+    let _ = tokio::fs::create_dir_all(&logs_dir).await;
+    let err_log_path = logs_dir.join("gateway.err.log");
+
+    // Try service mode first: `openclaw gateway start` (non-blocking probe).
+    // We only attempt to start an already-installed service — we never call
+    // `gateway install` here because that requires admin privileges on Windows
+    // and would block or silently fail for standard users.
+    // Spawn + wait (instead of output()) so we can kill the process on timeout
+    // and prevent orphaned processes that might bind the port later.
+    let service_started = match cmd("openclaw")
+        .args(["gateway", "start"])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+    {
+        Ok(mut child) => {
+            match tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                child.wait(),
+            )
+            .await
+            {
+                Ok(Ok(status)) => status.success(),
+                _ => {
+                    // Timeout or error — kill to prevent orphan process
+                    kill_child_tree(&mut child).await;
+                    false
+                }
+            }
+        }
+        Err(_) => false,
+    };
 
     // If the service command succeeded, wait up to 10s for the port to become
     // ready before falling through to foreground mode.  This prevents spawning
@@ -691,9 +770,28 @@ pub async fn launch_openclaw() -> Result<String, String> {
                 return Ok(auth_url);
             }
         }
-        // Service start returned success but gateway never became reachable —
-        // fall through to foreground mode.
     }
+
+    // Always stop any potentially-running service before foreground mode.
+    // Even if `service_started` was false, a previous run or external tool
+    // may have left a service occupying the port.
+    // Use spawn+timeout (not .output()) to avoid hanging indefinitely if the
+    // stop command gets stuck (e.g. Windows SCM deadlock).
+    if let Ok(mut stop_child) = cmd("openclaw")
+        .args(["gateway", "stop"])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+    {
+        if tokio::time::timeout(std::time::Duration::from_secs(5), stop_child.wait())
+            .await
+            .is_err()
+        {
+            kill_child_tree(&mut stop_child).await;
+        }
+    }
+    // Brief wait to let the port be released.
+    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
 
     // Fallback: spawn gateway in foreground (run) mode.
     // On Windows we use spawn_background() which adds CREATE_NO_WINDOW so no
@@ -701,12 +799,18 @@ pub async fn launch_openclaw() -> Result<String, String> {
     // cmd.exe to avoid handle-inheritance issues that prevent proper detach.
     // Keep the Child handle so we can kill it if the gateway fails to come up,
     // preventing orphan processes that would hold port 18789.
-    let foreground_child: Option<tokio::process::Child>;
+    let mut foreground_child: Option<tokio::process::Child>;
     {
+        // Redirect stderr to the log file (create truncates) so we can diagnose failures.
+        let stderr_stdio = std::fs::File::create(&err_log_path)
+            .map(std::process::Stdio::from)
+            .unwrap_or(std::process::Stdio::null());
+
         let mut child = spawn_background("openclaw")
             .args(["gateway", "run", "--port", &OPENCLAW_PORT.to_string()])
+            .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
+            .stderr(stderr_stdio)
             .spawn()
             .map_err(|e| format!("Failed to launch openclaw gateway: {}", e))?;
 
@@ -715,9 +819,14 @@ pub async fn launch_openclaw() -> Result<String, String> {
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
         match child.try_wait() {
             Ok(Some(status)) => {
+                // Read stderr from the log file to provide useful error context.
+                let stderr_content = tokio::fs::read_to_string(&err_log_path)
+                    .await
+                    .unwrap_or_default();
                 return Err(format!(
-                    "openclaw gateway exited immediately ({}). Port 18789 may be in use or the config is missing.",
-                    status
+                    "openclaw gateway exited immediately ({}).\n{}",
+                    status,
+                    stderr_content.trim()
                 ));
             }
             Ok(None) => {} // Still running, good
@@ -734,46 +843,62 @@ pub async fn launch_openclaw() -> Result<String, String> {
             ready = true;
             break;
         }
+        // Check if the process has died while we wait
+        if let Some(child) = foreground_child.as_mut() {
+            if let Ok(Some(_)) = child.try_wait() {
+                break; // Process exited, no point waiting
+            }
+        }
     }
 
     if !ready {
-        // Kill the foreground process to free the port before returning the error
+        // Kill the foreground process tree to free the port before returning the error.
+        // On Windows this must kill the entire tree (cmd.exe → node.exe).
         if let Some(mut child) = foreground_child {
-            let _ = child.kill().await;
+            kill_child_tree(&mut child).await;
         }
-        // Collect diagnostic info for the error message
-        let doctor_output = cmd("openclaw")
-            .args(["doctor"])
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
-            .output()
-            .await
-            .ok()
-            .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
-            .unwrap_or_default();
-
-        let err_log = tokio::fs::read_to_string(
-            dirs::home_dir()
-                .unwrap_or_default()
-                .join(".openclaw/logs/gateway.err.log"),
+        // Collect diagnostic info for the error message.
+        // Timeout so a broken doctor command doesn't block the error report.
+        let doctor_output = tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            cmd("openclaw")
+                .args(["doctor"])
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .output(),
         )
         .await
         .ok()
-        .and_then(|s| {
-            // Take only the last 500 chars to keep the error message reasonable.
-            // Use char boundary to avoid panic on multi-byte UTF-8 (e.g. Chinese).
-            let tail = if s.len() > 500 {
-                let mut start = s.len() - 500;
-                while !s.is_char_boundary(start) && start < s.len() {
-                    start += 1;
-                }
-                &s[start..]
+        .and_then(|r| r.ok())
+        .map(|o| {
+            let stdout = String::from_utf8_lossy(&o.stdout);
+            let stderr = String::from_utf8_lossy(&o.stderr);
+            if stderr.is_empty() {
+                stdout.to_string()
             } else {
-                &s
-            };
-            if tail.is_empty() { None } else { Some(tail.to_string()) }
+                format!("{}\n{}", stdout, stderr)
+            }
         })
         .unwrap_or_default();
+
+        let err_log = tokio::fs::read_to_string(&err_log_path)
+            .await
+            .ok()
+            .and_then(|s| {
+                // Take only the last 500 chars to keep the error message reasonable.
+                // Use char boundary to avoid panic on multi-byte UTF-8 (e.g. Chinese).
+                let tail = if s.len() > 500 {
+                    let mut start = s.len() - 500;
+                    while !s.is_char_boundary(start) && start < s.len() {
+                        start += 1;
+                    }
+                    &s[start..]
+                } else {
+                    &s
+                };
+                if tail.is_empty() { None } else { Some(tail.to_string()) }
+            })
+            .unwrap_or_default();
 
         return Err(format!(
             "Gateway did not respond within 30s.\n\n--- Doctor ---\n{}\n--- Error Log ---\n{}",
@@ -794,13 +919,17 @@ pub async fn stop_openclaw_gateway() -> Result<String, String> {
     super::path_env::refresh_system_path();
     find_program("openclaw")?;
 
-    let output = cmd("openclaw")
-        .args(["gateway", "stop"])
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .output()
-        .await
-        .map_err(|e| format!("Failed to stop gateway: {}", e))?;
+    let output = tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        cmd("openclaw")
+            .args(["gateway", "stop"])
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .output(),
+    )
+    .await
+    .map_err(|_| "openclaw gateway stop timed out after 10s".to_string())?
+    .map_err(|e| format!("Failed to stop gateway: {}", e))?;
 
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
@@ -821,14 +950,18 @@ pub async fn restart_openclaw_gateway() -> Result<String, String> {
     // Auto-fix config issues before restarting
     ensure_gateway_config().await;
 
-    // Try service restart first
-    let output = cmd("openclaw")
-        .args(["gateway", "restart"])
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .output()
-        .await
-        .map_err(|e| format!("Failed to restart gateway: {}", e))?;
+    // Try service restart first (timeout so a stuck CLI doesn't block forever)
+    let output = tokio::time::timeout(
+        std::time::Duration::from_secs(15),
+        cmd("openclaw")
+            .args(["gateway", "restart"])
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .output(),
+    )
+    .await
+    .map_err(|_| "openclaw gateway restart timed out after 15s".to_string())?
+    .map_err(|e| format!("Failed to restart gateway: {}", e))?;
 
     if output.status.success() {
         // Wait for it to come back up (30s to match launch timeout)
