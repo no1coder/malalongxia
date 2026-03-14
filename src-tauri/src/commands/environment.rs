@@ -70,9 +70,10 @@ fn check_os() -> CheckResult {
     }
 }
 
-// Minimum Node.js version required by OpenClaw (v22.16.0)
+// Minimum Node.js version — must match NODE_VERSION in install.rs (v22.22.0).
+// Users below this version will be prompted to upgrade Node.js.
 const MIN_NODE_MAJOR: u64 = 22;
-const MIN_NODE_MINOR: u64 = 16;
+const MIN_NODE_MINOR: u64 = 22;
 const MIN_NODE_PATCH: u64 = 0;
 
 // Check if Node.js is installed and meets minimum version requirement.
@@ -499,11 +500,11 @@ mod tests {
     // node_version_meets_minimum edge cases
     #[test]
     fn version_meets_minimum_stable_releases() {
-        assert!(node_version_meets_minimum("v22.16.0"));
         assert!(node_version_meets_minimum("v22.22.0"));
+        assert!(node_version_meets_minimum("v22.23.0"));
         assert!(node_version_meets_minimum("v23.0.0"));
-        assert!(!node_version_meets_minimum("v22.15.0"));
-        assert!(!node_version_meets_minimum("v22.12.0"));
+        assert!(!node_version_meets_minimum("v22.21.0"));
+        assert!(!node_version_meets_minimum("v22.16.0"));
         assert!(!node_version_meets_minimum("v18.20.0"));
     }
 
