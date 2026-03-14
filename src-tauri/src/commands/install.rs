@@ -489,23 +489,24 @@ async fn install_portable_git(window: &Window, channel: &str, app: &tauri::AppHa
                     .await
                     .map_err(|e| format!("Failed to copy bundled Git: {}", e))?;
             } else {
-                // Download MinGit from our own site (primary) with npmmirror fallback
+                // Download MinGit from npmmirror (primary, reliable in China)
+                // with malalongxia.com as fallback
                 let git_version = "2.53.0";
                 let filename = if arch == "aarch64" {
                     format!("MinGit-{}-arm64.zip", git_version)
                 } else {
                     format!("MinGit-{}-64-bit.zip", git_version)
                 };
-                let primary_url = format!("https://malalongxia.com/downloads/{}", filename);
-                let fallback_url = format!(
+                let primary_url = format!(
                     "https://registry.npmmirror.com/-/binary/git-for-windows/v{}.windows.1/{}",
                     git_version, filename
                 );
+                let fallback_url = format!("https://malalongxia.com/downloads/{}", filename);
 
                 emit_progress(window, channel, 2, "Downloading portable Git...");
                 let download_result = download_with_progress(window, channel, &primary_url, &tmp_str, 2, 8).await;
                 if download_result.is_err() {
-                    emit_log(window, channel, "Primary download failed, trying npmmirror fallback...");
+                    emit_log(window, channel, "Primary download failed, trying fallback...");
                     download_with_progress(window, channel, &fallback_url, &tmp_str, 2, 8).await?;
                 }
             }
@@ -665,9 +666,19 @@ async fn install_portable_git(window: &Window, channel: &str, app: &tauri::AppHa
                     .await
                     .map_err(|e| format!("Failed to copy bundled Git: {}", e))?;
             } else {
-                let url = format!("https://malalongxia.com/downloads/{}", filename);
+                // npmmirror doesn't host macOS Git bottles, so use malalongxia.com
+                // with GitHub release as fallback
+                let primary_url = format!("https://malalongxia.com/downloads/{}", filename);
+                let fallback_url = format!(
+                    "https://ghfast.top/https://github.com/Homebrew/homebrew-core/releases/download/git-{}/{}",
+                    git_version, filename
+                );
                 emit_progress(window, channel, 2, "Downloading Git for macOS...");
-                download_with_progress(window, channel, &url, &tmp_str, 2, 8).await?;
+                let download_result = download_with_progress(window, channel, &primary_url, &tmp_str, 2, 8).await;
+                if download_result.is_err() {
+                    emit_log(window, channel, "Primary download failed, trying GitHub mirror fallback...");
+                    download_with_progress(window, channel, &fallback_url, &tmp_str, 2, 8).await?;
+                }
             }
 
             emit_progress(window, channel, 9, "Installing Git...");
