@@ -63,12 +63,15 @@ fn bundled_git_archive(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
 // Create a tokio Command with expanded PATH for finding node/npm in packaged apps.
 // On Windows, wraps the call through `cmd.exe /C` so that `.cmd` scripts (like npm.cmd)
 // are resolved automatically—Rust's Command::new won't find .cmd files on its own.
+// Uses CREATE_NO_WINDOW (0x08000000) on Windows to prevent console windows from flashing.
 fn cmd(program: &str) -> Command {
     #[cfg(windows)]
     {
+        use std::os::windows::process::CommandExt;
         let mut c = Command::new("cmd");
         c.args(["/C", program]);
         c.env("PATH", expanded_path());
+        c.creation_flags(0x08000000); // CREATE_NO_WINDOW
         c
     }
     #[cfg(not(windows))]
@@ -77,6 +80,21 @@ fn cmd(program: &str) -> Command {
         c.env("PATH", expanded_path());
         c
     }
+}
+
+// Create a tokio Command that runs a program directly (not via cmd.exe).
+// On Windows, sets CREATE_NO_WINDOW to prevent console windows from appearing.
+fn new_cmd(program: &str) -> Command {
+    let c = Command::new(program);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        let mut c = c;
+        c.creation_flags(0x08000000); // CREATE_NO_WINDOW
+        return c;
+    }
+    #[cfg(not(windows))]
+    c
 }
 
 #[derive(Debug, Serialize)]
@@ -416,7 +434,7 @@ async fn stream_child_output(
             // Use tokio::process::Command (async) to avoid blocking the tokio executor.
             #[cfg(windows)]
             if let Some(pid) = child.id() {
-                let _ = Command::new("taskkill")
+                let _ = new_cmd("taskkill")
                     .args(["/T", "/F", "/PID", &pid.to_string()])
                     .stdout(std::process::Stdio::null())
                     .stderr(std::process::Stdio::null())
@@ -535,7 +553,7 @@ async fn install_portable_git(window: &Window, channel: &str, app: &tauri::AppHa
             if git_dir.exists() {
                 let dir_str = git_dir.to_string_lossy().to_string();
                 for attempt in 1u8..=3 {
-                    let ok = Command::new("cmd")
+                    let ok = new_cmd("cmd")
                         .args(["/C", "rmdir", "/s", "/q", &dir_str])
                         .stdout(std::process::Stdio::null())
                         .stderr(std::process::Stdio::null())
@@ -557,7 +575,7 @@ async fn install_portable_git(window: &Window, channel: &str, app: &tauri::AppHa
             let _ = tokio::fs::create_dir_all(&git_dir).await;
 
             // Try tar.exe first (built-in on Windows 10 1803+), then PowerShell fallback
-            let tar_result = Command::new("tar")
+            let tar_result = new_cmd("tar")
                 .args(["-xf", &tmp_str, "-C", &git_dir.to_string_lossy()])
                 .stdout(std::process::Stdio::piped())
                 .stderr(std::process::Stdio::piped())
@@ -585,7 +603,7 @@ async fn install_portable_git(window: &Window, channel: &str, app: &tauri::AppHa
                     ];
                     let mut ps_child = None;
                     for ps in &ps_paths {
-                        if let Ok(c) = Command::new(ps)
+                        if let Ok(c) = new_cmd(ps)
                             .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", &extract_cmd])
                             .stdout(std::process::Stdio::piped())
                             .stderr(std::process::Stdio::piped())
@@ -626,7 +644,7 @@ async fn install_portable_git(window: &Window, channel: &str, app: &tauri::AppHa
             std::env::set_var("PATH", format!("{};{}", git_cmd_dir.display(), current_path));
 
             // Verify git works
-            let git_check = Command::new("cmd")
+            let git_check = new_cmd("cmd")
                 .args(["/C", "git", "--version"])
                 .env("PATH", expanded_path())
                 .stdout(std::process::Stdio::piped())
@@ -1076,7 +1094,7 @@ pub async fn install_node(mirror: String, method: String, app: tauri::AppHandle,
                     let dir_str = node_dir.to_string_lossy().to_string();
                     let mut removed = false;
                     for attempt in 1u8..=3 {
-                        let status = Command::new("cmd")
+                        let status = new_cmd("cmd")
                             .args(["/C", "rmdir", "/s", "/q", &dir_str])
                             .stdout(std::process::Stdio::null())
                             .stderr(std::process::Stdio::null())
@@ -1099,7 +1117,7 @@ pub async fn install_node(mirror: String, method: String, app: tauri::AppHandle,
                 let _ = tokio::fs::create_dir_all(&node_dir).await;
 
                 // Extract zip: try tar.exe first, then PowerShell
-                let tar_result = Command::new("tar")
+                let tar_result = new_cmd("tar")
                     .args(["-xf", &tmp_str, "-C", &node_dir.to_string_lossy(), "--strip-components=1"])
                     .stdout(std::process::Stdio::piped())
                     .stderr(std::process::Stdio::piped())
@@ -1133,7 +1151,7 @@ pub async fn install_node(mirror: String, method: String, app: tauri::AppHandle,
                         ];
                         let mut ps_child = None;
                         for ps in &ps_paths {
-                            if let Ok(c) = Command::new(ps)
+                            if let Ok(c) = new_cmd(ps)
                                 .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", &extract_cmd])
                                 .stdout(std::process::Stdio::piped())
                                 .stderr(std::process::Stdio::piped())
@@ -1278,9 +1296,11 @@ fn classify_install_error(err: &str) -> &'static str {
 /// Returns the raw value string, or an empty string if not set.
 #[cfg(windows)]
 fn read_user_path_from_registry() -> String {
+    use std::os::windows::process::CommandExt;
     use std::process::Command as StdCommand;
     StdCommand::new("reg")
         .args(["query", r"HKCU\Environment", "/v", "Path"])
+        .creation_flags(0x08000000) // CREATE_NO_WINDOW
         .output()
         .ok()
         .and_then(|o| {
@@ -1334,6 +1354,7 @@ fn append_dirs_to_user_path_registry(new_dirs: &[&str]) {
     };
 
     // Write back using REG_EXPAND_SZ to preserve any existing %VAR% references
+    use std::os::windows::process::CommandExt;
     let _ = StdCommand::new("reg")
         .args([
             "add",
@@ -1346,6 +1367,7 @@ fn append_dirs_to_user_path_registry(new_dirs: &[&str]) {
             &new_path,
             "/f",
         ])
+        .creation_flags(0x08000000) // CREATE_NO_WINDOW
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .output();
@@ -1363,6 +1385,7 @@ fn append_dirs_to_user_path_registry(new_dirs: &[&str]) {
              $r=[IntPtr]::Zero; \
              [Win32]::SendMessageTimeout([IntPtr]0xffff,0x001a,[UIntPtr]::Zero,'Environment',2,5000,[ref]$r) | Out-Null"
         ])
+        .creation_flags(0x08000000) // CREATE_NO_WINDOW
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .spawn()
@@ -1680,7 +1703,7 @@ pub async fn install_openclaw(mirror: String, app: tauri::AppHandle, window: Win
         // run `npm config get prefix`) on every retry iteration.
         #[cfg(windows)]
         let mut npm_cmd = {
-            let mut c = Command::new("cmd");
+            let mut c = new_cmd("cmd");
             c.args(["/C", "npm"]);
             c.env("PATH", &path_snapshot);
             c
@@ -1738,7 +1761,7 @@ pub async fn install_openclaw(mirror: String, app: tauri::AppHandle, window: Win
                     // Resolve npm global root for cleanup operations
                     #[cfg(windows)]
                     let npm_prefix = {
-                        Command::new("cmd")
+                        new_cmd("cmd")
                             .args(["/C", "npm", "config", "get", "prefix"])
                             .env("PATH", &path_snapshot)
                             .stdout(std::process::Stdio::piped())
@@ -1815,7 +1838,7 @@ pub async fn install_openclaw(mirror: String, app: tauri::AppHandle, window: Win
                             if cfg!(windows) {
                                 let leftover_str = leftover.to_string_lossy().to_string();
                                 for rm_attempt in 1u8..=3 {
-                                    let ok = Command::new("cmd")
+                                    let ok = new_cmd("cmd")
                                         .args(["/C", "rmdir", "/s", "/q", &leftover_str])
                                         .stdout(std::process::Stdio::null())
                                         .stderr(std::process::Stdio::null())
@@ -1836,7 +1859,7 @@ pub async fn install_openclaw(mirror: String, app: tauri::AppHandle, window: Win
 
                     // Clean npm cache on ENOTEMPTY/EEXIST or as general fallback
                     #[cfg(windows)]
-                    let _ = Command::new("cmd")
+                    let _ = new_cmd("cmd")
                         .args(["/C", "npm", "cache", "clean", "--force"])
                         .env("PATH", &path_snapshot)
                         .stdout(std::process::Stdio::null())
@@ -1906,7 +1929,7 @@ pub async fn install_openclaw(mirror: String, app: tauri::AppHandle, window: Win
     {
         super::path_env::refresh_system_path();
         // Ask npm where globals live and persist that directory.
-        if let Ok(prefix_out) = Command::new("cmd")
+        if let Ok(prefix_out) = new_cmd("cmd")
             .args(["/C", "npm", "config", "get", "prefix"])
             .env("PATH", super::path_env::expanded_path())
             .stdout(std::process::Stdio::piped())

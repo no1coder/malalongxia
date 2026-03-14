@@ -16,11 +16,13 @@ pub struct CheckResult {
 fn run_command_output(cmd: &str, args: &[&str]) -> Option<String> {
     #[cfg(windows)]
     let output = {
+        use std::os::windows::process::CommandExt;
         let mut full_args = vec!["/C", cmd];
         full_args.extend(args);
         StdCommand::new("cmd")
             .args(&full_args)
             .env("PATH", expanded_path())
+            .creation_flags(0x08000000) // CREATE_NO_WINDOW
             .output()
     };
     #[cfg(not(windows))]
@@ -70,10 +72,11 @@ fn check_os() -> CheckResult {
     }
 }
 
-// Minimum Node.js version — must match NODE_VERSION in install.rs (v22.22.0).
-// Users below this version will be prompted to upgrade Node.js.
+// Minimum Node.js version required to run OpenClaw.
+// The installer downloads v22.22.0 (NODE_VERSION in install.rs), but any
+// existing installation >= v22.16.0 is accepted to avoid unnecessary reinstalls.
 const MIN_NODE_MAJOR: u64 = 22;
-const MIN_NODE_MINOR: u64 = 22;
+const MIN_NODE_MINOR: u64 = 16;
 const MIN_NODE_PATCH: u64 = 0;
 
 // Check if Node.js is installed and meets minimum version requirement.
@@ -503,8 +506,9 @@ mod tests {
         assert!(node_version_meets_minimum("v22.22.0"));
         assert!(node_version_meets_minimum("v22.23.0"));
         assert!(node_version_meets_minimum("v23.0.0"));
-        assert!(!node_version_meets_minimum("v22.21.0"));
-        assert!(!node_version_meets_minimum("v22.16.0"));
+        assert!(node_version_meets_minimum("v22.16.0"));
+        assert!(node_version_meets_minimum("v22.17.0"));
+        assert!(!node_version_meets_minimum("v22.15.0"));
         assert!(!node_version_meets_minimum("v18.20.0"));
     }
 

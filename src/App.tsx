@@ -12,7 +12,7 @@ import OpenClawInstallPage from "./pages/OpenClawInstallPage";
 import ApiConfigPage from "./pages/ApiConfigPage";
 import CompletionPage from "./pages/CompletionPage";
 import DashboardPage from "./pages/DashboardPage";
-import FeishuConfigPage from "./pages/FeishuConfigPage";
+
 import "./App.css";
 
 // App update info from version.json
@@ -157,14 +157,9 @@ function AppShell() {
     navigate("/dashboard", { replace: true });
   };
 
-  const handleConfigureFeishu = () => {
-    navigate("/feishu-config", { replace: true });
-  };
-
   const currentStep = getStepIndex(location.pathname);
   const isDashboard = location.pathname === "/dashboard";
   const isReconfigApi = location.pathname === "/reconfig-api";
-  const isFeishuConfig = location.pathname === "/feishu-config";
 
   // Build step info array with status derived from current step
   const steps: readonly StepInfo[] = useMemo(
@@ -194,14 +189,7 @@ function AppShell() {
     );
   }
 
-  // Feishu config mode — no sidebar
-  if (isFeishuConfig) {
-    return (
-      <Layout currentStep={-1} steps={[]} banner={updateBanner}>
-        <FeishuConfigPage onDone={handleReconfigDone} />
-      </Layout>
-    );
-  }
+
 
   // Reconfig API mode — no sidebar
   if (isReconfigApi) {
@@ -224,7 +212,7 @@ function AppShell() {
           gatewayUrl={openclawStatus.gateway_url}
           onReinstall={handleReinstall}
           onReconfigureApi={handleReconfigureApi}
-          onConfigureFeishu={handleConfigureFeishu}
+
           onUninstall={handleUninstall}
         />
       </Layout>
@@ -256,7 +244,7 @@ function AppShell() {
                 gatewayUrl={openclawStatus.gateway_url}
                 onReinstall={handleReinstall}
                 onReconfigureApi={handleReconfigureApi}
-                onConfigureFeishu={handleConfigureFeishu}
+      
                 onUninstall={handleUninstall}
               />
             ) : null

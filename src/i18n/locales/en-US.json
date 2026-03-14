@@ -145,6 +145,8 @@
     "configureTitle": "Configure {{provider}}",
     "recommended": "Recommended",
     "needsProxy": "Proxy Required",
+    "rooyun": "RooYun",
+    "rooyunDesc": "AI model aggregation, one key for all models",
     "zhipu": "Zhipu AI (GLM)",
     "zhipuDesc": "Strong Chinese language capabilities",
     "qwen": "Tongyi Qwen",

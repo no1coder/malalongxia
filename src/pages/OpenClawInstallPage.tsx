@@ -138,6 +138,8 @@ export default function OpenClawInstallPage() {
         level: "info",
         message: t("openclawInstall.complete"),
       });
+      // Auto-navigate to next step after successful install
+      goToStep(4);
     } catch (err) {
       setOpenclawInstallStatus("error");
       addOpenclawInstallLog({
@@ -151,6 +153,7 @@ export default function OpenClawInstallPage() {
     setOpenclawInstallStatus,
     setOpenclawVersion,
     addOpenclawInstallLog,
+    goToStep,
     t,
   ]);
 
@@ -324,34 +327,22 @@ export default function OpenClawInstallPage() {
           {t("btn.prev")}
         </button>
 
-        {/* Install / Retry button — only before success */}
-        {!isComplete && (
-          <button
-            className={clsx(
-              "ocinstall-btn ocinstall-btn-primary",
-              !isInstalling && selectedNpmMirror && npmReady === true && "btn-cta-glow"
-            )}
-            disabled={isInstalling || npmReady !== true || !selectedNpmMirror}
-            onClick={handleInstall}
-          >
-            {isInstalling
-              ? t("openclawInstall.installing")
-              : isFailed
-                ? t("btn.retry")
-                : t("openclawInstall.installBtn")}
-          </button>
-        )}
-
-        {/* Next button — enabled only after success */}
+        {/* Single primary button: install+auto-next when needed, or just next */}
         <button
           className={clsx(
             "ocinstall-btn ocinstall-btn-primary",
-            isComplete && "btn-cta-glow"
+            !isInstalling && (isComplete || (selectedNpmMirror && npmReady === true)) && "btn-cta-glow"
           )}
-          disabled={!isComplete}
-          onClick={handleNext}
+          disabled={isInstalling || (!isComplete && (npmReady !== true || !selectedNpmMirror))}
+          onClick={isComplete ? handleNext : handleInstall}
         >
-          {t("btn.next")}
+          {isInstalling
+            ? t("openclawInstall.installing")
+            : isComplete
+              ? t("btn.next")
+              : isFailed
+                ? t("btn.retry")
+                : t("openclawInstall.installBtn")}
         </button>
       </div>
     </div>

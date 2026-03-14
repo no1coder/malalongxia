@@ -384,34 +384,22 @@ export default function NodeInstallPage() {
           {t("btn.prev")}
         </button>
 
-        {/* Install / Retry button — only when installation is needed */}
-        {nodeRequired && !isComplete && (
-          <button
-            className={clsx(
-              "nodeinstall-btn nodeinstall-btn-primary",
-              !isInstalling && selectedMirror && "btn-cta-glow"
-            )}
-            disabled={isInstalling || !selectedMirror}
-            onClick={handleInstall}
-          >
-            {isInstalling
-              ? t("nodeInstall.installing")
-              : isFailed
-                ? t("btn.retry")
-                : t("nodeInstall.installBtn")}
-          </button>
-        )}
-
-        {/* Next button — enabled after install success or when node not required */}
+        {/* Single primary button: install+next when needed, or just next */}
         <button
           className={clsx(
             "nodeinstall-btn nodeinstall-btn-primary",
-            (!nodeRequired || isComplete) && "btn-cta-glow"
+            !isInstalling && (selectedMirror || !nodeRequired || isComplete) && "btn-cta-glow"
           )}
-          disabled={nodeRequired && !isComplete}
-          onClick={handleNext}
+          disabled={isInstalling || (nodeRequired && !isComplete && !selectedMirror)}
+          onClick={nodeRequired && !isComplete ? handleInstall : handleNext}
         >
-          {t("btn.next")}
+          {isInstalling
+            ? t("nodeInstall.installing")
+            : nodeRequired && !isComplete
+              ? isFailed
+                ? t("btn.retry")
+                : t("nodeInstall.installBtn")
+              : t("btn.next")}
         </button>
       </div>
     </div>

@@ -145,6 +145,8 @@
     "configureTitle": "配置 {{provider}}",
     "recommended": "推荐",
     "needsProxy": "需代理",
+    "rooyun": "RooYun (如云)",
+    "rooyunDesc": "AI 模型聚合平台，一个 Key 用所有模型",
     "zhipu": "智谱 AI (GLM)",
     "zhipuDesc": "国产大模型，中文能力强",
     "qwen": "通义千问 (Qwen)",

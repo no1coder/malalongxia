@@ -17,7 +17,7 @@ import {
   Square,
   Stethoscope,
   Wrench,
-  MessageSquare,
+
   Trash2,
 } from "lucide-react";
 import "./DashboardPage.css";
@@ -32,7 +32,7 @@ interface DashboardPageProps {
   readonly gatewayUrl: string;
   readonly onReinstall: () => void;
   readonly onReconfigureApi: () => void;
-  readonly onConfigureFeishu: () => void;
+
   readonly onUninstall: () => void;
 }
 
@@ -53,7 +53,7 @@ export default function DashboardPage({
   gatewayUrl,
   onReinstall,
   onReconfigureApi,
-  onConfigureFeishu,
+
   onUninstall,
 }: DashboardPageProps) {
   const { t } = useTranslation();
@@ -426,11 +426,6 @@ export default function DashboardPage({
           <button className="dashboard-btn dashboard-btn-secondary" onClick={onReconfigureApi}>
             <Settings size={16} />
             {t("dashboard.reconfigureApi")}
-          </button>
-
-          <button className="dashboard-btn dashboard-btn-secondary" onClick={onConfigureFeishu}>
-            <MessageSquare size={16} />
-            {t("dashboard.configureFeishu")}
           </button>
 
           <button className="dashboard-btn dashboard-btn-secondary" onClick={handleTips}>

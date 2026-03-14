@@ -24,6 +24,7 @@ import "./ApiConfigPage.css";
 
 // Provider console URLs for obtaining API keys
 const PROVIDER_KEY_URLS: Record<string, string> = {
+  rooyun: "https://www.rooyun.com/",
   zhipu: "https://open.bigmodel.cn/usercenter/apikeys",
   qwen: "https://bailian.console.aliyun.com/cn-beijing/?tab=model#/efm/coding_plan",
   moonshot: "https://platform.moonshot.cn/console/api-keys",
@@ -35,6 +36,16 @@ const PROVIDER_KEY_URLS: Record<string, string> = {
 
 // Available AI provider options
 const AI_PROVIDERS: readonly AIProviderOption[] = [
+  {
+    id: "rooyun",
+    name: "apiConfig.rooyun",
+    description: "apiConfig.rooyunDesc",
+    baseUrl: "https://www.rooyun.com/v1",
+    needsProxy: false,
+    recommended: true,
+    openclawProvider: "rooyun",
+    defaultModel: "",
+  },
   {
     id: "zhipu",
     name: "apiConfig.zhipu",
@@ -112,6 +123,7 @@ const AI_PROVIDERS: readonly AIProviderOption[] = [
 
 // Map provider id to icon component
 const PROVIDER_ICONS: Record<string, React.ElementType> = {
+  rooyun: Sparkles,
   zhipu: Brain,
   qwen: Sparkles,
   moonshot: Moon,

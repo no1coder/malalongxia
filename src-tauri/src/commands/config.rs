@@ -12,12 +12,15 @@ fn find_program(name: &str) -> Result<std::path::PathBuf, String> {
 
 /// Create a tokio Command with the expanded PATH set.
 /// On Windows, wraps through `cmd.exe /C` so `.cmd` scripts (npm.cmd) are found.
+/// Uses CREATE_NO_WINDOW (0x08000000) on Windows to prevent console windows from appearing.
 fn cmd(program: &str) -> Command {
     #[cfg(windows)]
     {
+        use std::os::windows::process::CommandExt;
         let mut c = Command::new("cmd");
         c.args(["/C", program]);
         c.env("PATH", expanded_path());
+        c.creation_flags(0x08000000); // CREATE_NO_WINDOW
         c
     }
     #[cfg(not(windows))]
@@ -112,10 +115,11 @@ async fn read_gateway_token() -> Option<String> {
         .map(|s| s.to_string())
 }
 
-// Build the gateway URL with token query parameter if available.
+// Build the gateway URL with token hash fragment if available.
+// OpenClaw uses fragment-based auth: http://host:port/#token=VALUE
 async fn gateway_url_with_token() -> String {
     match read_gateway_token().await {
-        Some(token) => format!("{}/?token={}", OPENCLAW_URL, token),
+        Some(token) => format!("{}/#token={}", OPENCLAW_URL, token),
         None => OPENCLAW_URL.to_string(),
     }
 }
@@ -480,57 +484,56 @@ pub async fn configure_api(
         .stderr(std::process::Stdio::piped())
         .output();
 
-    let onboard_output = tokio::time::timeout(
+    let onboard_result = tokio::time::timeout(
         std::time::Duration::from_secs(60),
         onboard_fut,
     )
-    .await
-    .map_err(|_| "openclaw onboard timed out after 60 seconds. Please check your network and try again.".to_string())?
-    .map_err(|e| format!("Failed to run openclaw onboard: {}", e))?;
+    .await;
 
-    if !onboard_output.status.success() {
-        let stderr = String::from_utf8_lossy(&onboard_output.stderr);
-        let stdout = String::from_utf8_lossy(&onboard_output.stdout);
-        return Err(format!(
-            "Failed to configure API: {}{}",
-            stderr.trim(),
-            if !stdout.trim().is_empty() {
-                format!("\n{}", stdout.trim())
+    // If onboard succeeded, set the default model for native providers
+    let onboard_ok = match &onboard_result {
+        Ok(Ok(output)) if output.status.success() => true,
+        _ => false,
+    };
+
+    if onboard_ok {
+        // Set the default model for native providers (onboard already sets it for custom providers)
+        let is_native = matches!(provider.as_str(), "zai" | "openai" | "anthropic" | "moonshot" | "qianfan");
+        if is_native && !model.is_empty() {
+            let model_id = if model.contains('/') {
+                model.clone()
             } else {
-                String::new()
-            }
-        ));
-    }
+                format!("{}/{}", provider, model)
+            };
 
-    // Set the default model for native providers (onboard already sets it for custom providers)
-    let is_native = matches!(provider.as_str(), "zai" | "openai" | "anthropic" | "moonshot" | "qianfan");
-    if is_native && !model.is_empty() {
-        let model_id = if model.contains('/') {
-            model.clone()
-        } else {
-            format!("{}/{}", provider, model)
-        };
+            let model_result = cmd("openclaw")
+                .args(["config", "set", "agents.defaults.model.primary", &model_id])
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .output()
+                .await;
 
-        let model_result = cmd("openclaw")
-            .args(["config", "set", "agents.defaults.model.primary", &model_id])
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
-            .output()
-            .await;
-
-        if let Err(e) = &model_result {
-            eprintln!("Warning: failed to set default model: {}", e);
-        } else if let Ok(o) = &model_result {
-            if !o.status.success() {
-                eprintln!(
-                    "Warning: openclaw config set failed: {}",
-                    String::from_utf8_lossy(&o.stderr)
-                );
+            if let Err(e) = &model_result {
+                eprintln!("Warning: failed to set default model: {}", e);
+            } else if let Ok(o) = &model_result {
+                if !o.status.success() {
+                    eprintln!(
+                        "Warning: openclaw config set failed: {}",
+                        String::from_utf8_lossy(&o.stderr)
+                    );
+                }
             }
         }
+        return Ok(());
     }
 
-    Ok(())
+    // Onboard failed or timed out — fall back to direct config file modification.
+    // This avoids repeated CLI failures (e.g. black windows, network issues).
+    eprintln!(
+        "Warning: openclaw onboard failed, falling back to direct config: {:?}",
+        onboard_result.as_ref().map(|r| r.as_ref().map(|o| o.status))
+    );
+    configure_api_direct(&provider, &api_key, &base_url, &model).await
 }
 
 /// Configure providers that need direct openclaw.json modification (e.g. bailian/DashScope).
@@ -629,7 +632,20 @@ fn open_in_browser(url: &str) -> Result<(), String> {
     let os = std::env::consts::OS;
     let result = match os {
         "macos" => StdCommand::new("open").arg(url).spawn(),
-        "windows" => StdCommand::new("cmd").args(["/c", "start", "", url]).spawn(),
+        "windows" => {
+            #[cfg(windows)]
+            {
+                use std::os::windows::process::CommandExt;
+                StdCommand::new("cmd")
+                    .args(["/c", "start", "", url])
+                    .creation_flags(0x08000000) // CREATE_NO_WINDOW
+                    .spawn()
+            }
+            #[cfg(not(windows))]
+            {
+                unreachable!()
+            }
+        },
         _ => StdCommand::new("xdg-open").arg(url).spawn(),
     };
     result.map_err(|e| format!("Failed to open browser: {}", e))?;
@@ -1263,12 +1279,16 @@ async fn remove_dir_with_retry(path: &std::path::Path) -> bool {
     if !path.exists() { return true; }
     let path_str = path.to_string_lossy().to_string();
     for attempt in 1u8..=3 {
-        let ok = Command::new("cmd")
-            .args(["/C", "rmdir", "/s", "/q", &path_str])
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status()
-            .await
+        let ok = {
+            use std::os::windows::process::CommandExt;
+            Command::new("cmd")
+                .args(["/C", "rmdir", "/s", "/q", &path_str])
+                .creation_flags(0x08000000) // CREATE_NO_WINDOW
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status()
+                .await
+        }
             .map(|s| s.success())
             .unwrap_or(false);
         if ok || !path.exists() { return true; }
@@ -1283,10 +1303,12 @@ async fn remove_dir_with_retry(path: &std::path::Path) -> bool {
 /// Reads HKCU\Environment\Path, filters out matching segments, writes back.
 #[cfg(windows)]
 fn remove_from_user_path_registry(needle: &str) {
+    use std::os::windows::process::CommandExt;
     use std::process::Command as StdCommand;
 
     let out = StdCommand::new("reg")
         .args(["query", r"HKCU\Environment", "/v", "Path"])
+        .creation_flags(0x08000000) // CREATE_NO_WINDOW
         .output()
         .ok();
     let existing = out
@@ -1326,6 +1348,7 @@ fn remove_from_user_path_registry(needle: &str) {
             "add", r"HKCU\Environment", "/v", "Path",
             "/t", "REG_EXPAND_SZ", "/d", &new_path, "/f",
         ])
+        .creation_flags(0x08000000) // CREATE_NO_WINDOW
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .output();
@@ -1340,6 +1363,7 @@ fn remove_from_user_path_registry(needle: &str) {
              $r=[IntPtr]::Zero; \
              [Win32]::SendMessageTimeout([IntPtr]0xffff,0x001a,[UIntPtr]::Zero,'Environment',2,5000,[ref]$r) | Out-Null"
         ])
+        .creation_flags(0x08000000) // CREATE_NO_WINDOW
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .spawn()
@@ -1672,7 +1696,7 @@ mod tests {
         let url = gateway_url_with_token().await;
         // Either plain URL or URL with token
         assert!(
-            url == OPENCLAW_URL || url.starts_with(&format!("{}/?token=", OPENCLAW_URL)),
+            url == OPENCLAW_URL || url.starts_with(&format!("{}/#token=", OPENCLAW_URL)),
             "Unexpected gateway URL format: {}", url
         );
     }

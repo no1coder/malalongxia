@@ -19,12 +19,18 @@ mod npm_prefix_cache {
         }
         // Use spawn + try_wait loop instead of .output() so we can enforce
         // a timeout. A broken/hung npm must never block the entire app.
-        let mut child = std::process::Command::new("cmd")
-            .args(["/C", "npm", "config", "get", "prefix"])
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::null())
-            .spawn()
-            .ok()?;
+        let mut child = {
+            let mut c = std::process::Command::new("cmd");
+            c.args(["/C", "npm", "config", "get", "prefix"])
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::null());
+            #[cfg(windows)]
+            {
+                use std::os::windows::process::CommandExt;
+                c.creation_flags(0x08000000); // CREATE_NO_WINDOW
+            }
+            c.spawn().ok()?
+        };
 
         // Poll for up to 3 seconds (30 × 100ms)
         let status = {
@@ -202,11 +208,13 @@ pub fn invalidate_npm_prefix_cache() {}
 #[cfg(windows)]
 pub fn refresh_system_path() {
     use std::collections::HashSet;
+    use std::os::windows::process::CommandExt;
     use std::process::Command as StdCommand;
 
     // Read Machine PATH from registry
     let machine_path = StdCommand::new("reg")
         .args(["query", r"HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment", "/v", "Path"])
+        .creation_flags(0x08000000) // CREATE_NO_WINDOW
         .output()
         .ok()
         .and_then(|o| parse_reg_value(&String::from_utf8_lossy(&o.stdout)))
@@ -215,6 +223,7 @@ pub fn refresh_system_path() {
     // Read User PATH from registry
     let user_path = StdCommand::new("reg")
         .args(["query", r"HKCU\Environment", "/v", "Path"])
+        .creation_flags(0x08000000) // CREATE_NO_WINDOW
         .output()
         .ok()
         .and_then(|o| parse_reg_value(&String::from_utf8_lossy(&o.stdout)))

@@ -28,10 +28,10 @@ const DEFAULT_PROPS = {
   latestVersion: "1.2.3",
   needsUpdate: false,
   running: true,
-  gatewayUrl: "http://127.0.0.1:18789/?token=abc",
+  gatewayUrl: "http://127.0.0.1:18789/#token=abc",
   onReinstall: vi.fn(),
   onReconfigureApi: vi.fn(),
-  onConfigureFeishu: vi.fn(),
+
   onUninstall: vi.fn(),
 };
 
