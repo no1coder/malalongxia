@@ -58,7 +58,7 @@ describe("OpenClawInstallPage", () => {
     mockListen.mockImplementation(() => Promise.resolve(vi.fn()));
     // Mock invoke calls: verify_node_npm returns npm_available, test_mirror_latency returns ms
     mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd === "verify_node_npm") return Promise.resolve({ npm_available: true, node_version: "v22.14.0", npm_version: "10.9.2" });
+      if (cmd === "verify_node_npm") return Promise.resolve({ npm_available: true, node_version: "v22.22.0", npm_version: "10.9.2" });
       if (cmd === "test_mirror_latency") return Promise.resolve(100);
       if (cmd === "install_openclaw") return Promise.resolve({ version: "1.0.0" });
       return Promise.resolve(null);
@@ -185,7 +185,7 @@ describe("OpenClawInstallPage", () => {
   it("allows retry after error", async () => {
     const user = userEvent.setup();
     mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd === "verify_node_npm") return Promise.resolve({ npm_available: true, node_version: "v22.14.0", npm_version: "10.9.2" });
+      if (cmd === "verify_node_npm") return Promise.resolve({ npm_available: true, node_version: "v22.22.0", npm_version: "10.9.2" });
       if (cmd === "test_mirror_latency") return Promise.resolve(100);
       if (cmd === "install_openclaw") return Promise.resolve({ version: "1.0.0" });
       return Promise.resolve(null);

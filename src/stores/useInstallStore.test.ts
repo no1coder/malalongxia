@@ -67,12 +67,12 @@ describe("useInstallStore", () => {
 
   describe("setNodeVersion", () => {
     it("sets node version string", () => {
-      useInstallStore.getState().setNodeVersion("v22.14.0");
-      expect(useInstallStore.getState().nodeVersion).toBe("v22.14.0");
+      useInstallStore.getState().setNodeVersion("v22.22.0");
+      expect(useInstallStore.getState().nodeVersion).toBe("v22.22.0");
     });
 
     it("sets node version to null", () => {
-      useInstallStore.getState().setNodeVersion("v22.14.0");
+      useInstallStore.getState().setNodeVersion("v22.22.0");
       useInstallStore.getState().setNodeVersion(null);
       expect(useInstallStore.getState().nodeVersion).toBeNull();
     });

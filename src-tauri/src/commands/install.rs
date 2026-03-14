@@ -5,7 +5,7 @@ use tokio::process::Command;
 
 use super::path_env::{expanded_path, refresh_system_path};
 
-const NODE_VERSION: &str = "v22.14.0";
+const NODE_VERSION: &str = "v22.22.0";
 
 /// Check if a bundled resource file exists in the app's resource directory.
 /// Full edition bundles Node.js and Git archives; Lite edition has none.
@@ -791,7 +791,7 @@ async fn install_portable_git(window: &Window, channel: &str, app: &tauri::AppHa
 
 // Build the Node.js download URL from a mirror base URL.
 // Mirror URL format: https://npmmirror.com/mirrors/node/
-// Result: https://npmmirror.com/mirrors/node/v22.14.0/node-v22.14.0-darwin-arm64.tar.gz
+// Result: https://npmmirror.com/mirrors/node/v22.22.0/node-v22.22.0-darwin-arm64.tar.gz
 fn build_node_download_url(mirror_base: &str) -> String {
     let os = std::env::consts::OS;
     let arch = std::env::consts::ARCH;
@@ -1956,14 +1956,14 @@ mod tests {
     #[test]
     fn build_url_with_trailing_slash() {
         let url = build_node_download_url("https://npmmirror.com/mirrors/node/");
-        assert!(url.starts_with("https://npmmirror.com/mirrors/node/v22.14.0/"));
-        assert!(url.contains("node-v22.14.0"));
+        assert!(url.starts_with("https://npmmirror.com/mirrors/node/v22.22.0/"));
+        assert!(url.contains("node-v22.22.0"));
     }
 
     #[test]
     fn build_url_without_trailing_slash() {
         let url = build_node_download_url("https://npmmirror.com/mirrors/node");
-        assert!(url.starts_with("https://npmmirror.com/mirrors/node/v22.14.0/"));
+        assert!(url.starts_with("https://npmmirror.com/mirrors/node/v22.22.0/"));
     }
 
     #[test]

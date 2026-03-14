@@ -82,7 +82,7 @@ describe("NodeInstallPage", () => {
   });
 
   it("shows already installed notice when not required", () => {
-    useInstallStore.setState({ nodeRequired: false, nodeVersion: "v22.14.0" });
+    useInstallStore.setState({ nodeRequired: false, nodeVersion: "v22.22.0" });
     renderWithRouter(<NodeInstallPage />);
     expect(screen.getByText(/nodeInstall.alreadyInstalled/)).toBeInTheDocument();
   });
@@ -124,7 +124,7 @@ describe("NodeInstallPage", () => {
   it("navigates to step 3 when nodeRequired is false", async () => {
     const user = userEvent.setup();
     mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd === "verify_node_npm") return Promise.resolve({ node_available: true, npm_available: true, node_version: "v22.14.0", npm_version: "10.9.2" });
+      if (cmd === "verify_node_npm") return Promise.resolve({ node_available: true, npm_available: true, node_version: "v22.22.0", npm_version: "10.9.2" });
       if (cmd === "test_mirror_latency") return Promise.resolve(100);
       return Promise.resolve(null);
     });

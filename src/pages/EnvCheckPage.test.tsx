@@ -63,7 +63,7 @@ describe("EnvCheckPage", () => {
     useInstallStore.setState({
       envChecks: [
         { id: "os", name: "envCheck.os", status: "passed", detail: "macOS 14.0" },
-        { id: "node", name: "envCheck.node", status: "passed", detail: "v22.14.0" },
+        { id: "node", name: "envCheck.node", status: "passed", detail: "v22.22.0" },
       ],
       envCheckComplete: true,
     });

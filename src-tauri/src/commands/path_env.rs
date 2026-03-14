@@ -334,7 +334,7 @@ fn push_glob_latest(out: &mut Vec<PathBuf>, pattern: &std::path::Path) {
 }
 
 /// Extract a (major, minor, patch) version tuple from a path like
-/// `.nvm/versions/node/v22.14.0/bin` for semantic comparison.
+/// `.nvm/versions/node/v22.22.0/bin` for semantic comparison.
 /// Falls back to (0, 0, 0) if no version pattern is found.
 pub fn version_tuple_from_path(path: &std::path::Path) -> (u64, u64, u64) {
     extract_version_tuple(path)
@@ -343,7 +343,7 @@ pub fn version_tuple_from_path(path: &std::path::Path) -> (u64, u64, u64) {
 fn extract_version_tuple(path: &std::path::Path) -> (u64, u64, u64) {
     for component in path.components() {
         let s = component.as_os_str().to_string_lossy();
-        // Match version directory names like "v22.14.0" or "22.14.0"
+        // Match version directory names like "v22.22.0" or "22.22.0"
         let trimmed = s.strip_prefix('v').unwrap_or(&s);
         let parts: Vec<&str> = trimmed.split('.').collect();
         if parts.len() >= 2 {
@@ -398,8 +398,8 @@ mod tests {
 
     #[test]
     fn extract_version_tuple_parses_node_path() {
-        let path = PathBuf::from("/home/user/.nvm/versions/node/v22.14.0/bin");
-        assert_eq!(extract_version_tuple(&path), (22, 14, 0));
+        let path = PathBuf::from("/home/user/.nvm/versions/node/v22.22.0/bin");
+        assert_eq!(extract_version_tuple(&path), (22, 22, 0));
     }
 
     #[test]

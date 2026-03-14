@@ -27,7 +27,7 @@ describe("CompletionPage", () => {
   beforeEach(() => {
     mockInvoke.mockClear();
     useInstallStore.setState({
-      nodeVersion: "v22.14.0",
+      nodeVersion: "v22.22.0",
       nodeRequired: false,
       openclawVersion: "1.2.3",
       selectedProvider: {
@@ -51,7 +51,7 @@ describe("CompletionPage", () => {
     renderWithRouter(<CompletionPage />);
     expect(screen.getByText("Node.js")).toBeInTheDocument();
     expect(screen.getByText("OpenClaw")).toBeInTheDocument();
-    expect(screen.getByText("v22.14.0")).toBeInTheDocument();
+    expect(screen.getByText("v22.22.0")).toBeInTheDocument();
     expect(screen.getByText("1.2.3")).toBeInTheDocument();
   });
 

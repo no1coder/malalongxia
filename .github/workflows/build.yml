@@ -10,7 +10,7 @@ permissions:
   contents: write
 
 env:
-  NODE_VERSION: "v22.14.0"
+  NODE_VERSION: "v22.22.0"
   GIT_VERSION: "2.53.0"
   NODE_MIRROR: "https://npmmirror.com/mirrors/node"
 

@@ -70,9 +70,9 @@ fn check_os() -> CheckResult {
     }
 }
 
-// Minimum Node.js version required by OpenClaw (v22.12.0)
+// Minimum Node.js version required by OpenClaw (v22.16.0)
 const MIN_NODE_MAJOR: u64 = 22;
-const MIN_NODE_MINOR: u64 = 12;
+const MIN_NODE_MINOR: u64 = 16;
 const MIN_NODE_PATCH: u64 = 0;
 
 // Check if Node.js is installed and meets minimum version requirement.
@@ -104,7 +104,7 @@ fn check_node() -> CheckResult {
     }
 }
 
-// Parse a version string like "v22.14.0" and check if it meets minimum.
+// Parse a version string like "v22.22.0" and check if it meets minimum.
 // Rejects pre-release versions (e.g. "v22.12.0-rc.1", "v23.0.0-nightly").
 fn node_version_meets_minimum(version: &str) -> bool {
     let trimmed = version.trim().strip_prefix('v').unwrap_or(version.trim());
@@ -499,17 +499,18 @@ mod tests {
     // node_version_meets_minimum edge cases
     #[test]
     fn version_meets_minimum_stable_releases() {
-        assert!(node_version_meets_minimum("v22.12.0"));
-        assert!(node_version_meets_minimum("v22.14.0"));
+        assert!(node_version_meets_minimum("v22.16.0"));
+        assert!(node_version_meets_minimum("v22.22.0"));
         assert!(node_version_meets_minimum("v23.0.0"));
-        assert!(!node_version_meets_minimum("v22.11.0"));
+        assert!(!node_version_meets_minimum("v22.15.0"));
+        assert!(!node_version_meets_minimum("v22.12.0"));
         assert!(!node_version_meets_minimum("v18.20.0"));
     }
 
     #[test]
     fn version_rejects_prerelease() {
-        assert!(!node_version_meets_minimum("v22.12.0-rc.1"));
+        assert!(!node_version_meets_minimum("v22.16.0-rc.1"));
         assert!(!node_version_meets_minimum("v23.0.0-nightly.20250101"));
-        assert!(!node_version_meets_minimum("v22.12.0-beta.1"));
+        assert!(!node_version_meets_minimum("v22.22.0-beta.1"));
     }
 }
