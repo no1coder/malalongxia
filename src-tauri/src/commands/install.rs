@@ -354,6 +354,8 @@ async fn download_once(
 }
 
 // Stream stdout and stderr of a child process to the frontend via events.
+// Stderr is also captured so callers can inspect error details on failure
+// (e.g. classify ENOTEMPTY / EEXIST / ETIMEDOUT from npm install).
 async fn stream_child_output(
     window: &Window,
     channel: &str,
@@ -375,13 +377,21 @@ async fn stream_child_output(
 
     let w2 = window.clone();
     let ch2 = channel.to_string();
-    let stderr_handle = tokio::spawn(async move {
+    // Capture stderr content (up to 8KB) for error classification while
+    // still streaming each line to the frontend in real time.
+    let stderr_handle: tokio::task::JoinHandle<String> = tokio::spawn(async move {
+        let mut captured = String::new();
         if let Some(err) = stderr {
             let mut reader = BufReader::new(err).lines();
             while let Ok(Some(line)) = reader.next_line().await {
                 emit_log(&w2, &ch2, &line);
+                if captured.len() < 8192 {
+                    captured.push_str(&line);
+                    captured.push('\n');
+                }
             }
         }
+        captured
     });
 
     // 10-minute timeout covers stdout/stderr drain AND process exit.
@@ -389,8 +399,10 @@ async fn stream_child_output(
     let result = tokio::time::timeout(
         std::time::Duration::from_secs(600),
         async {
-            let _ = tokio::join!(stdout_handle, stderr_handle);
-            child.wait().await
+            let (_, stderr_res) = tokio::join!(stdout_handle, stderr_handle);
+            let captured = stderr_res.unwrap_or_else(|_| String::new());
+            let wait_res = child.wait().await;
+            (captured, wait_res)
         },
     )
     .await;
@@ -415,10 +427,20 @@ async fn stream_child_output(
             let _ = child.kill().await;
             Err("Process timed out after 10 minutes".to_string())
         }
-        Ok(wait_result) => {
+        Ok((captured_stderr, wait_result)) => {
             let status = wait_result.map_err(|e| format!("Failed to wait for process: {}", e))?;
             if !status.success() {
-                return Err(format!("Process exited with status: {}", status));
+                // Include the last ~2000 chars of stderr in the error message so callers
+                // (e.g. classify_install_error) can inspect the actual error details.
+                let tail = if captured_stderr.len() > 2000 {
+                    &captured_stderr[captured_stderr.len() - 2000..]
+                } else {
+                    &captured_stderr
+                };
+                if tail.trim().is_empty() {
+                    return Err(format!("Process exited with status: {}", status));
+                }
+                return Err(format!("Process exited with status: {}. Output: {}", status, tail.trim()));
             }
             Ok(())
         }
@@ -655,6 +677,12 @@ async fn install_portable_git(window: &Window, channel: &str, app: &tauri::AppHa
                 .ok_or("Cannot determine home directory")?
                 .join(".local")
                 .join("git");
+
+            // Clean up any previous (possibly corrupt) installation before extracting.
+            if git_dir.exists() {
+                emit_log(window, channel, "Removing previous Git installation...");
+                let _ = tokio::fs::remove_dir_all(&git_dir).await;
+            }
 
             tokio::fs::create_dir_all(&git_dir)
                 .await
@@ -1170,10 +1198,39 @@ pub async fn install_node(mirror: String, method: String, app: tauri::AppHandle,
     Ok(())
 }
 
+/// Clean up stale openclaw staging directories under the npm global root.
+/// npm creates temporary `.openclaw-*` directories during `npm install -g openclaw`
+/// that can be left behind after a failed install. The official install.sh performs
+/// the same cleanup: `rm -rf "$npm_root"/.openclaw-* "$npm_root"/openclaw`
+async fn cleanup_npm_openclaw_dirs(npm_root: &std::path::Path) {
+    if !npm_root.exists() {
+        return;
+    }
+    if let Ok(mut entries) = tokio::fs::read_dir(npm_root).await {
+        while let Ok(Some(entry)) = entries.next_entry().await {
+            let name = entry.file_name();
+            let name_str = name.to_string_lossy();
+            // Remove .openclaw-* staging directories (e.g. .openclaw-a1b2c3)
+            if name_str.starts_with(".openclaw-") || name_str.starts_with(".openclaw~") {
+                let path = entry.path();
+                if path.is_dir() {
+                    let _ = tokio::fs::remove_dir_all(&path).await;
+                } else {
+                    let _ = tokio::fs::remove_file(&path).await;
+                }
+            }
+        }
+    }
+}
+
 // Classify npm install errors and provide actionable hints.
 fn classify_install_error(err: &str) -> &'static str {
     let lower = err.to_lowercase();
-    if lower.contains("eacces") || lower.contains("eperm") || lower.contains("permission denied") {
+    if lower.contains("enotempty") {
+        "ENOTEMPTY: stale staging directory from a previous install. The installer will clean up and retry."
+    } else if lower.contains("eexist") {
+        "EEXIST: file conflict from a previous install. The installer will remove conflicting files and retry."
+    } else if lower.contains("eacces") || lower.contains("eperm") || lower.contains("permission denied") {
         "Permission error. Try running the app as Administrator (Windows) or check file permissions."
     } else if lower.contains("enospc") {
         "Disk full. Free up disk space and try again."
@@ -1187,10 +1244,14 @@ fn classify_install_error(err: &str) -> &'static str {
         "DNS resolution failed. Try changing your DNS to 119.29.29.29 (DNSPod) or 223.5.5.5 (Alibaba) and retry."
     } else if lower.contains("network") || lower.contains("etimedout") || lower.contains("econnrefused") || lower.contains("econnreset") {
         "Network error. Check your internet connection or try a different mirror."
-    } else if lower.contains("node-gyp") || lower.contains("cmake") || lower.contains("msbuild") {
-        "Native module compilation failed. This is usually not critical for OpenClaw."
+    } else if lower.contains("gyp err") || lower.contains("node-gyp") || lower.contains("no developer tools") || lower.contains("failed to build") {
+        "Native module compilation failed. Install build tools (macOS: xcode-select --install, Linux: sudo apt install build-essential, Windows: npm install -g windows-build-tools) if needed. This is usually not critical for core OpenClaw functionality."
+    } else if lower.contains("cmake") || lower.contains("msbuild") {
+        "Build tool (cmake/msbuild) not found. This is usually not critical for OpenClaw."
     } else if lower.contains("sharp") || lower.contains("libvips") {
         "Image processing module error. This is usually not critical."
+    } else if lower.contains("python") && (lower.contains("not found") || lower.contains("no python")) {
+        "Python not found. Some optional native modules require Python. Install Python 3 if needed."
     } else {
         ""
     }
@@ -1307,10 +1368,126 @@ fn is_github_tarball_error(err: &str) -> bool {
         || (lower.contains("network request") && lower.contains("github"))
 }
 
+/// Query the installed openclaw version via npm.
+async fn get_openclaw_version() -> String {
+    let version_output = cmd("npm")
+        .args(["list", "-g", "openclaw", "--depth=0", "--json"])
+        .output()
+        .await
+        .ok();
+
+    version_output
+        .filter(|o| o.status.success())
+        .and_then(|o| {
+            let json_str = String::from_utf8_lossy(&o.stdout);
+            serde_json::from_str::<serde_json::Value>(&json_str)
+                .ok()
+                .and_then(|v| {
+                    v.get("dependencies")
+                        .and_then(|d| d.get("openclaw"))
+                        .and_then(|o| o.get("version"))
+                        .and_then(|ver| ver.as_str().map(|s| s.to_string()))
+                })
+        })
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+/// Fix npm global install permissions on Linux.
+/// Many Linux users have npm global prefix pointing to /usr which requires sudo.
+/// Redirect to ~/.npm-global so npm install -g works without root.
+/// Same strategy as the official install.sh fix_npm_permissions().
+#[cfg(target_os = "linux")]
+async fn fix_npm_permissions_linux(window: &Window, ch: &str) {
+    let npm_prefix = cmd("npm")
+        .args(["config", "get", "prefix"])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .output()
+        .await
+        .ok()
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .unwrap_or_default();
+
+    if npm_prefix.is_empty() {
+        return;
+    }
+
+    // Check if the prefix is writable
+    let prefix_path = std::path::PathBuf::from(&npm_prefix);
+    let lib_path = prefix_path.join("lib");
+    let writable = prefix_path.metadata().map(|_| {
+        std::fs::metadata(&lib_path)
+            .map(|m| !m.permissions().readonly())
+            .unwrap_or(false)
+            || std::fs::metadata(&prefix_path)
+                .map(|m| !m.permissions().readonly())
+                .unwrap_or(false)
+    }).unwrap_or(false);
+
+    // Also check by attempting to create a test file
+    let test_writable = if !writable {
+        let test_file = prefix_path.join(".malalongxia_write_test");
+        let can_write = tokio::fs::write(&test_file, "test").await.is_ok();
+        let _ = tokio::fs::remove_file(&test_file).await;
+        can_write
+    } else {
+        true
+    };
+
+    if test_writable {
+        return; // npm prefix is writable, no fix needed
+    }
+
+    emit_log(window, ch, "npm global prefix is not writable. Configuring user-local prefix (~/.npm-global)...");
+
+    let home = dirs::home_dir().unwrap_or_default();
+    let npm_global = home.join(".npm-global");
+    let _ = tokio::fs::create_dir_all(&npm_global).await;
+
+    // Set npm prefix to user-writable directory
+    let _ = cmd("npm")
+        .args(["config", "set", "prefix", &npm_global.to_string_lossy()])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .output()
+        .await;
+
+    // Add to PATH for this session
+    let npm_global_bin = npm_global.join("bin");
+    let current_path = std::env::var("PATH").unwrap_or_default();
+    if !current_path.contains(&npm_global_bin.to_string_lossy().to_string()) {
+        std::env::set_var("PATH", format!("{}:{}", npm_global_bin.display(), current_path));
+    }
+
+    // Persist to shell profiles
+    let path_line = format!(
+        "\n# npm global (configured by OpenClaw installer)\nexport PATH=\"{}:$PATH\"\n",
+        npm_global_bin.display()
+    );
+    for rc_name in &[".bashrc", ".zshrc"] {
+        let rc_path = home.join(rc_name);
+        if rc_path.exists() {
+            let content = tokio::fs::read_to_string(&rc_path).await.unwrap_or_default();
+            if !content.contains(".npm-global") {
+                let tmp = rc_path.with_extension("tmp");
+                let new_content = format!("{}{}", content, path_line);
+                if tokio::fs::write(&tmp, &new_content).await.is_ok() {
+                    let _ = tokio::fs::rename(&tmp, &rc_path).await;
+                    emit_log(window, ch, &format!("Added ~/.npm-global/bin to PATH in {}", rc_name));
+                }
+            }
+        }
+    }
+
+    emit_log(window, ch, "npm global prefix configured to ~/.npm-global (no sudo needed).");
+}
+
 #[tauri::command]
 pub async fn install_openclaw(mirror: String, app: tauri::AppHandle, window: Window) -> Result<InstallResult, String> {
     let ch = "openclaw-install";
     let registry = mirror.trim_end_matches('/');
+
+    emit_progress(&window, ch, 0, "Starting OpenClaw installation...");
 
     // Pre-flight: ensure git is available (some npm packages need it)
     refresh_system_path();
@@ -1352,6 +1529,13 @@ pub async fn install_openclaw(mirror: String, app: tauri::AppHandle, window: Win
         }
     }
 
+    // Linux: fix npm global permissions to avoid EACCES errors.
+    // Redirect npm global prefix to ~/.npm-global (same strategy as official install.sh).
+    #[cfg(target_os = "linux")]
+    {
+        fix_npm_permissions_linux(&window, ch).await;
+    }
+
     // Step 1: Will pass --registry flag directly to npm install (avoids modifying global config)
     emit_progress(&window, ch, 10, "Preparing installation...");
     emit_log(&window, ch, &format!("Using npm registry: {}", registry));
@@ -1361,13 +1545,13 @@ pub async fn install_openclaw(mirror: String, app: tauri::AppHandle, window: Win
     // NOTE: GIT_CONFIG_COUNT/KEY/VALUE requires Git 2.31+. We also write a
     // temp gitconfig file and set GIT_CONFIG_GLOBAL so older Git versions work.
     //
-    // Each insteadOf key must be unique; Git treats duplicate keys as
-    // separate entries only when using the env-var protocol (one rule per slot).
+    // Each GIT_CONFIG_COUNT slot holds exactly one key=value pair.
+    // Both SSH-URL and SCP-style rewrites use `insteadOf` (there is no `insteadOfScp` key).
     let mut git_config_entries: Vec<(String, String)> = vec![
         // Rewrite ssh://git@github.com/ → https://github.com/
         ("url.https://github.com/.insteadOf".to_string(), "ssh://git@github.com/".to_string()),
         // Rewrite git@github.com: → https://github.com/ (SCP-style shorthand)
-        ("url.https://github.com/.insteadOfScp".to_string(), "git@github.com:".to_string()),
+        ("url.https://github.com/.insteadOf".to_string(), "git@github.com:".to_string()),
     ];
 
     // Test direct GitHub connectivity (many Chinese users can't reach it).
@@ -1528,12 +1712,13 @@ pub async fn install_openclaw(mirror: String, app: tauri::AppHandle, window: Win
                 if is_github_tarball_error(&e) {
                     github_tarball_failed = true;
                 }
-                last_error = e;
-                // Clean up before retry
+                last_error = e.clone();
+                // Clean up before retry — targeted fixes based on error type,
+                // modeled after the official install.sh retry strategy.
                 if attempt < max_retries {
-                    // Remove leftover openclaw dir to avoid EPERM file lock issues on Windows
                     emit_log(&window, ch, "Cleaning up before retry...");
-                    // Reuse path_snapshot here to avoid calling expanded_path() / npm config get prefix again
+
+                    // Resolve npm global root for cleanup operations
                     #[cfg(windows)]
                     let npm_prefix = {
                         Command::new("cmd")
@@ -1560,16 +1745,59 @@ pub async fn install_openclaw(mirror: String, app: tauri::AppHandle, window: Win
                             .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
                             .unwrap_or_default()
                     };
+
                     if !npm_prefix.is_empty() {
-                        let leftover = std::path::PathBuf::from(&npm_prefix)
-                            .join("node_modules")
-                            .join("openclaw");
+                        let npm_root = std::path::PathBuf::from(&npm_prefix).join("lib").join("node_modules");
+                        // Fallback: on Windows npm root is <prefix>/node_modules
+                        let npm_root = if npm_root.exists() {
+                            npm_root
+                        } else {
+                            std::path::PathBuf::from(&npm_prefix).join("node_modules")
+                        };
+
+                        let lower_err = e.to_lowercase();
+
+                        // ENOTEMPTY: "directory not empty, rename" — stale .openclaw-* temp dirs.
+                        // Official install.sh cleans .openclaw-* and openclaw under npm root.
+                        if lower_err.contains("enotempty") {
+                            emit_log(&window, ch, "ENOTEMPTY detected — cleaning stale staging directories...");
+                            cleanup_npm_openclaw_dirs(&npm_root).await;
+                        }
+
+                        // EEXIST: "file already exists" — conflicting bin symlinks from a previous install.
+                        // Official install.sh removes the conflicting file and retries.
+                        if lower_err.contains("eexist") {
+                            emit_log(&window, ch, "EEXIST detected — removing conflicting files...");
+                            cleanup_npm_openclaw_dirs(&npm_root).await;
+                            // Remove the openclaw bin symlink/script that conflicts.
+                            // On Unix: <prefix>/bin/openclaw (symlink)
+                            // On Windows: <prefix>/openclaw.cmd (script), no bin/ subdir
+                            let bin_names: &[&str] = if cfg!(windows) {
+                                &["openclaw", "openclaw.cmd", "openclaw.ps1"]
+                            } else {
+                                &["openclaw"]
+                            };
+                            let bin_dir = if cfg!(windows) {
+                                std::path::PathBuf::from(&npm_prefix)
+                            } else {
+                                std::path::PathBuf::from(&npm_prefix).join("bin")
+                            };
+                            for name in bin_names {
+                                let bin_path = bin_dir.join(name);
+                                if bin_path.exists() {
+                                    emit_log(&window, ch, &format!("Removing conflicting {}", bin_path.display()));
+                                    let _ = tokio::fs::remove_file(&bin_path).await;
+                                }
+                            }
+                        }
+
+                        // General cleanup: remove leftover openclaw package dir
+                        let leftover = npm_root.join("openclaw");
                         if leftover.exists() {
                             emit_log(&window, ch, &format!("Removing leftover {}", leftover.display()));
                             if cfg!(windows) {
-                                // Retry up to 3 times — antivirus may briefly lock npm module files
                                 let leftover_str = leftover.to_string_lossy().to_string();
-                                for attempt in 1u8..=3 {
+                                for rm_attempt in 1u8..=3 {
                                     let ok = Command::new("cmd")
                                         .args(["/C", "rmdir", "/s", "/q", &leftover_str])
                                         .stdout(std::process::Stdio::null())
@@ -1579,7 +1807,7 @@ pub async fn install_openclaw(mirror: String, app: tauri::AppHandle, window: Win
                                         .map(|s| s.success())
                                         .unwrap_or(false);
                                     if ok || !leftover.exists() { break; }
-                                    if attempt < 3 {
+                                    if rm_attempt < 3 {
                                         tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
                                     }
                                 }
@@ -1588,6 +1816,8 @@ pub async fn install_openclaw(mirror: String, app: tauri::AppHandle, window: Win
                             }
                         }
                     }
+
+                    // Clean npm cache on ENOTEMPTY/EEXIST or as general fallback
                     #[cfg(windows)]
                     let _ = Command::new("cmd")
                         .args(["/C", "npm", "cache", "clean", "--force"])
@@ -1653,8 +1883,6 @@ pub async fn install_openclaw(mirror: String, app: tauri::AppHandle, window: Win
         }
     }
 
-    emit_progress(&window, ch, 100, "OpenClaw installed successfully!");
-
     // On Windows, persist the npm global bin directory to the user PATH registry so
     // openclaw is discoverable after the app restarts.
     #[cfg(windows)]
@@ -1676,28 +1904,48 @@ pub async fn install_openclaw(mirror: String, app: tauri::AppHandle, window: Win
         }
     }
 
-    // Step 3: Retrieve installed version
-    let version_output = cmd("npm")
-        .args(["list", "-g", "openclaw", "--depth=0", "--json"])
-        .output()
-        .await
-        .map_err(|e| format!("Failed to query openclaw version: {}", e))?;
+    // Step 3: Run openclaw doctor for migrations and health check.
+    // The official install.sh always does this after installation; it handles
+    // config migration, gateway refresh, and catches common setup issues.
+    emit_progress(&window, ch, 85, "Running openclaw doctor...");
+    emit_log(&window, ch, "Running openclaw doctor --non-interactive for config migration and health check...");
+    let doctor_result = tokio::time::timeout(
+        std::time::Duration::from_secs(30),
+        cmd("openclaw")
+            .args(["doctor", "--non-interactive"])
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .output(),
+    )
+    .await;
+    match doctor_result {
+        Ok(Ok(output)) => {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            if !stdout.trim().is_empty() {
+                emit_log(&window, ch, &format!("doctor: {}", stdout.trim()));
+            }
+            if !stderr.trim().is_empty() {
+                emit_log(&window, ch, &format!("doctor stderr: {}", stderr.trim()));
+            }
+            if output.status.success() {
+                emit_log(&window, ch, "openclaw doctor completed successfully.");
+            } else {
+                emit_log(&window, ch, "openclaw doctor exited with warnings (non-fatal).");
+            }
+        }
+        Ok(Err(e)) => {
+            emit_log(&window, ch, &format!("openclaw doctor failed to run: {} (non-fatal)", e));
+        }
+        Err(_) => {
+            emit_log(&window, ch, "openclaw doctor timed out after 30s (non-fatal).");
+        }
+    }
 
-    let version = if version_output.status.success() {
-        let json_str = String::from_utf8_lossy(&version_output.stdout);
-        serde_json::from_str::<serde_json::Value>(&json_str)
-            .ok()
-            .and_then(|v| {
-                v.get("dependencies")
-                    .and_then(|d| d.get("openclaw"))
-                    .and_then(|o| o.get("version"))
-                    .and_then(|ver| ver.as_str().map(|s| s.to_string()))
-            })
-            .unwrap_or_else(|| "unknown".to_string())
-    } else {
-        "unknown".to_string()
-    };
-
+    // Step 4: Retrieve installed version
+    emit_progress(&window, ch, 95, "Verifying installation...");
+    let version = get_openclaw_version().await;
+    emit_progress(&window, ch, 100, "OpenClaw installed successfully!");
     Ok(InstallResult { version })
 }
 

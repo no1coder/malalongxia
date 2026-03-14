@@ -264,6 +264,49 @@ fn parse_reg_value(output: &str) -> Option<String> {
             }
         })
         .filter(|v| !v.is_empty())
+        .map(|v| expand_env_vars(&v))
+}
+
+/// Expand `%VAR%` environment variable references in a string.
+/// Windows registry PATH values (REG_EXPAND_SZ) store raw references like
+/// `%SystemRoot%\system32` that must be expanded before use as actual paths.
+/// `std::env::var` on Windows is case-insensitive (uses GetEnvironmentVariableW).
+#[cfg(windows)]
+fn expand_env_vars(s: &str) -> String {
+    let mut result = String::with_capacity(s.len());
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '%' {
+            let mut var_name = String::new();
+            let mut found_end = false;
+            while let Some(&next) = chars.peek() {
+                if next == '%' {
+                    chars.next();
+                    found_end = true;
+                    break;
+                }
+                var_name.push(next);
+                chars.next();
+            }
+            if found_end && !var_name.is_empty() {
+                if let Ok(value) = std::env::var(&var_name) {
+                    result.push_str(&value);
+                } else {
+                    // Cannot expand — keep the original %VAR% literal
+                    result.push('%');
+                    result.push_str(&var_name);
+                    result.push('%');
+                }
+            } else {
+                // Unmatched % or empty var name — keep as-is
+                result.push('%');
+                result.push_str(&var_name);
+            }
+        } else {
+            result.push(c);
+        }
+    }
+    result
 }
 
 #[cfg(not(windows))]
@@ -340,5 +383,82 @@ fn push_latest_fnm_node(out: &mut Vec<PathBuf>, base: &PathBuf) {
     }
     if let Some((_, path)) = best {
         out.push(path);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn expanded_path_is_not_empty() {
+        let path = expanded_path();
+        assert!(!path.is_empty());
+    }
+
+    #[test]
+    fn extract_version_tuple_parses_node_path() {
+        let path = PathBuf::from("/home/user/.nvm/versions/node/v22.14.0/bin");
+        assert_eq!(extract_version_tuple(&path), (22, 14, 0));
+    }
+
+    #[test]
+    fn extract_version_tuple_returns_zeros_for_no_version() {
+        let path = PathBuf::from("/usr/local/bin");
+        assert_eq!(extract_version_tuple(&path), (0, 0, 0));
+    }
+
+    #[cfg(windows)]
+    mod windows_tests {
+        use super::super::*;
+
+        #[test]
+        fn expand_env_vars_expands_system_root() {
+            // Set a known env var for deterministic testing
+            std::env::set_var("_TEST_MALA_VAR", r"C:\TestDir");
+            let input = r"%_TEST_MALA_VAR%\system32;%_TEST_MALA_VAR%\Wbem";
+            let result = expand_env_vars(input);
+            assert_eq!(result, r"C:\TestDir\system32;C:\TestDir\Wbem");
+            std::env::remove_var("_TEST_MALA_VAR");
+        }
+
+        #[test]
+        fn expand_env_vars_preserves_unknown_vars() {
+            let input = r"%NONEXISTENT_VAR_12345%\bin";
+            let result = expand_env_vars(input);
+            assert_eq!(result, r"%NONEXISTENT_VAR_12345%\bin");
+        }
+
+        #[test]
+        fn expand_env_vars_handles_no_vars() {
+            let input = r"C:\Windows\system32;C:\Program Files\nodejs";
+            let result = expand_env_vars(input);
+            assert_eq!(result, input);
+        }
+
+        #[test]
+        fn expand_env_vars_handles_unmatched_percent() {
+            let input = r"50% done";
+            let result = expand_env_vars(input);
+            // Unmatched % keeps the rest as-is
+            assert_eq!(result, "50% done");
+        }
+
+        #[test]
+        fn expand_env_vars_handles_empty_percent_pair() {
+            let input = "before%%after";
+            let result = expand_env_vars(input);
+            // Empty var name %% → kept as literal %
+            assert_eq!(result, "before%after");
+        }
+
+        #[test]
+        fn parse_reg_value_expands_env_vars() {
+            std::env::set_var("_TEST_MALA_SR", r"C:\Windows");
+            let reg_output = "    Path    REG_EXPAND_SZ    %_TEST_MALA_SR%\\system32;C:\\other";
+            let result = parse_reg_value(reg_output);
+            assert_eq!(result, Some(r"C:\Windows\system32;C:\other".to_string()));
+            std::env::remove_var("_TEST_MALA_SR");
+        }
     }
 }
